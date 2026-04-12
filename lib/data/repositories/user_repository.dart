@@ -4,14 +4,18 @@ import '../../core/constants/app_constants.dart';
 
 class UserRepository {
   final LocalDataSource _localDataSource;
+  final DateTime Function() _nowProvider;
 
-  UserRepository(this._localDataSource);
+  UserRepository(
+    this._localDataSource, {
+    DateTime Function()? nowProvider,
+  }) : _nowProvider = nowProvider ?? DateTime.now;
 
   Future<UserModel> getUser() => _localDataSource.getUser();
 
   Future<UserModel> markChapterAsRead(String book, int chapter) async {
     final user = await getUser();
-    final now = DateTime.now();
+    final now = _nowProvider();
     final today = DateTime(now.year, now.month, now.day);
     
     final progress = Map<String, Set<int>>.from(user.readingProgress);
