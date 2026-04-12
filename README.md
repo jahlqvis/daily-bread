@@ -18,8 +18,16 @@ After cloning/moving the repo, run:
 ## Project layout
 
 - `lib/` – app code (Providers for user/Bible state, screens for dashboard, reading, badges, etc.)
-- `assets/` – `bible/kjv_books/*.json` contains per-book KJV content (ASV/WEB can follow same pattern)
+- `assets/` – `bible/kjv_books`, `bible/asv_books`, and `bible/web_books` contain per-book JSON for KJV, ASV, and WEB translations
 - `scripts/` – helper scripts for iOS builds (`xcode_backend_wrapper.sh`, `run_ios_sim.sh`)
+
+## Bible data & translations
+
+- Translation selector (globe icon) lets you switch between `KJV`, `ASV`, and `WEB` anywhere you enter the reading flow. The choice persists while the app is open.
+- The per-book datasets are generated via:
+  - `dart run tool/generate_bible_books.dart kjv asv` – downloads Scrollmapper JSON for the KJV/ASV and writes per-book assets
+  - `dart run tool/import_web_translation.dart` – downloads the WEB HTML archive from eBible.org, parses every chapter, and emits `web_books/*.json`
+- Each JSON file has the shape `{ "name": "Genesis", "chapters": [ { "chapter": 1, "verses": [ { "verse": 1, "text": "..." } ] } ] }`
 
 ## Running on iOS Simulator
 
@@ -55,6 +63,6 @@ The output lives in `build/web/` and has been verified locally.
 
 ## Next steps
 
-1. Add ASV/WEB translation packs using the same per-book loader and wire a translation selector in-app.
-2. Add push notifications and Firebase/cloud sync for streaks.
+1. Add push notifications and Firebase/cloud sync for streaks.
+2. Expand the translation selector with reading plans or translation-specific study notes.
 3. Prepare Android + App Store distribution tooling once Apple resolves the macOS 15 signing bug (or after downgrading to Xcode 15).

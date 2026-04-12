@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/bible_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../widgets/translation_selector.dart';
 
 class BookSelectionScreen extends StatelessWidget {
   const BookSelectionScreen({super.key});
@@ -11,6 +12,7 @@ class BookSelectionScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Select Book'),
+        actions: const [TranslationSelector()],
       ),
       body: Consumer<BibleProvider>(
         builder: (context, bibleProvider, _) {
@@ -70,9 +72,11 @@ class BookSelectionScreen extends StatelessWidget {
       trailing: isSelected
           ? const Icon(Icons.check, color: AppTheme.primaryColor)
           : const Icon(Icons.arrow_forward_ios, size: 16),
-      onTap: () {
-        bibleProvider.selectBook(book);
-        Navigator.pop(context);
+      onTap: () async {
+        await bibleProvider.selectBook(book);
+        if (context.mounted) {
+          Navigator.pop(context);
+        }
       },
     );
   }

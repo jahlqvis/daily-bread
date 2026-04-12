@@ -31,10 +31,10 @@ Success metrics:
 - **Framework:** Flutter 3 (Material 3 design), packaged via Provider for state management.
 - **State Management:**
   - `UserProvider` controls streak, XP, levels, badges, persisted progress.
-  - `BibleProvider` tracks selected testament/book/chapter.
+  - `BibleProvider` tracks selected translation/testament/book/chapter.
 - **Data Layer:**
   - `LocalDataSource` (SharedPreferences) stores user progress (last read date, streak count, XP, badges, per-book progress).
-  - `BibleDataSource` currently returns sample passages; will expand to full canonical content.
+  - `BibleDataSource` lazily loads per-book JSON for each translation (KJV/ASV/WEB) from `assets/bible/<translation>_books/*.json` and caches the result in-memory.
 - **Repository:** `UserRepository` applies business rules (streak continuity, XP awards, badge unlocking) and proxies persistence.
 - **UI Screens:**
   - `HomeScreen` → high-level stats + entry points.
@@ -71,11 +71,10 @@ class BibleBook {
 - Local-only for MVP; architecture ready to swap persistence with cloud sync layer.
 
 ### Assets & Content Plan
-- `assets/bible/placeholder.json` contains sample chapters (Gen 1-3, John 1 & 3, Psalms 1 & 23).
+- `assets/bible/kjv_books`, `assets/bible/asv_books`, `assets/bible/web_books` – generated per-book JSON files for each public-domain translation (via `tool/generate_bible_books.dart` and `tool/import_web_translation.dart`).
 - Next steps:
-  1. Import KJV full text (structured JSON per book/chapter/verse).
-  2. Add metadata for reading plans (e.g., chronological, OT/NT, Psalms/Proverbs).
-  3. Provide short contextual summaries per chapter for engagement.
+  1. Add metadata for reading plans (e.g., chronological, OT/NT, Psalms/Proverbs).
+  2. Provide short contextual summaries per chapter for engagement.
 
 ### Build & Run Instructions
 1. `~/flutter/bin/flutter pub get` (after repo move, regenerates `.dart_tool`).
@@ -91,15 +90,14 @@ class BibleBook {
    ```
 
 ### Roadmap / Future Work
-1. **Content Expansion** – integrate full KJV/ASV/WEB data; add search.
-2. **Reminder Notifications** – local notifications scheduling, daily reminders.
-3. **Cloud Sync** – integrate Firebase Auth + Cloud Firestore for multi-device continuity.
-4. **Android Build Pipeline** – configure signing, CI, device testing.
-5. **Gamification Enhancements** – leaderboards, streak freezes, community challenges.
-6. **Sharing & Notes** – allow sharing verses, taking notes/journal entries (stored locally first).
+1. **Reminder Notifications** – local notifications scheduling, daily reminders.
+2. **Cloud Sync** – integrate Firebase Auth + Cloud Firestore for multi-device continuity.
+3. **Android Build Pipeline** – configure signing, CI, device testing.
+4. **Gamification Enhancements** – leaderboards, streak freezes, community challenges.
+5. **Sharing & Notes** – allow sharing verses, taking notes/journal entries (stored locally first).
 
 ### Open Questions
-- Which translation should be primary (default) on first launch? (Currently sample text unspecified.)
+- KJV is the initial default in the selector—is that acceptable for all markets/users?
 - Are there privacy/compliance requirements (e.g., GDPR) before enabling cloud sync?
 - Should reading plans be linear (book order) or curated (topic-based)?
 

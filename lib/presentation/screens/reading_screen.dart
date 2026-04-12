@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/bible_provider.dart';
 import '../providers/user_provider.dart';
+import '../../core/constants/bible_translation.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/bible_passage_model.dart';
+import '../widgets/translation_selector.dart';
 
 class ReadingScreen extends StatelessWidget {
   const ReadingScreen({super.key});
@@ -17,6 +19,7 @@ class ReadingScreen extends StatelessWidget {
             return Text('${bibleProvider.selectedBook} ${bibleProvider.selectedChapter}');
           },
         ),
+        actions: const [TranslationSelector()],
       ),
       body: Consumer2<BibleProvider, UserProvider>(
         builder: (context, bibleProvider, userProvider, child) {
@@ -33,7 +36,11 @@ class ReadingScreen extends StatelessWidget {
 
           return Column(
             children: [
-              _buildChapterHeader(chapter, isRead),
+              _buildChapterHeader(
+                chapter,
+                isRead,
+                bibleProvider.selectedTranslation.shortLabel,
+              ),
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(16),
@@ -83,7 +90,7 @@ class ReadingScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildChapterHeader(BibleChapter chapter, bool isRead) {
+  Widget _buildChapterHeader(BibleChapter chapter, bool isRead, String translationLabel) {
     return Container(
       padding: const EdgeInsets.all(16),
       color: isRead ? AppTheme.primaryColor.withAlpha(25) : Colors.grey[100],
@@ -94,7 +101,7 @@ class ReadingScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  chapter.reference,
+                  '${chapter.reference} · $translationLabel',
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,

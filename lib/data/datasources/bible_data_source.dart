@@ -3,36 +3,39 @@ import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../../core/constants/app_constants.dart';
+import '../../core/constants/bible_translation.dart';
 import '../../core/utils/book_slug.dart';
 import '../models/bible_passage_model.dart';
 
 class BibleDataSource {
-  static final Map<String, Map<int, List<BiblePassage>>> _bookCache = {};
+  static final Map<BibleTranslation, Map<String, Map<int, List<BiblePassage>>>>
+      _bookCache = {};
   static final Map<String, Future<void>> _loadingBooks = {};
-  static const String _booksBasePath = 'assets/bible/kjv_books';
 
-  Future<void> loadBibleData() async {
-    await preloadBook(AppConstants.booksOfTheBible.first);
+  Future<void> loadBibleData(BibleTranslation translation) async {
+    await preloadBook(AppConstants.booksOfTheBible.first, translation);
   }
 
-  Future<void> preloadBook(String book) async {
-    if (_bookCache.containsKey(book)) return;
-    final existingLoader = _loadingBooks[book];
+  Future<void> preloadBook(String book, BibleTranslation translation) async {
+    final cache = _bookCache.putIfAbsent(translation, () => {});
+    if (cache.containsKey(book)) return;
+    final key = _loadingKey(book, translation);
+    final existingLoader = _loadingBooks[key];
     if (existingLoader != null) {
       return existingLoader;
     }
-    final loader = _loadBook(book);
-    _loadingBooks[book] = loader;
+    final loader = _loadBook(book, translation);
+    _loadingBooks[key] = loader;
     try {
       await loader;
     } finally {
-      _loadingBooks.remove(book);
+      _loadingBooks.remove(key);
     }
   }
 
-  Future<void> _loadBook(String book) async {
+  Future<void> _loadBook(String book, BibleTranslation translation) async {
     final slug = bookSlug(book);
-    final path = '$_booksBasePath/$slug.json';
+    final path = '${translation.assetDirectory}/$slug.json';
     final jsonString = await rootBundle.loadString(path);
     final Map<String, dynamic> jsonMap = jsonDecode(jsonString) as Map<String, dynamic>;
     final List<dynamic> chapters = jsonMap['chapters'] as List<dynamic>? ?? [];
@@ -65,11 +68,11 @@ class BibleDataSource {
       }
     }
 
-    _bookCache[book] = chapterMap;
+    _bookCache[translation]![book] = chapterMap;
   }
 
-  BibleChapter? getChapter(String book, int chapter) {
-    final chapters = _bookCache[book];
+  BibleChapter? getChapter(String book, int chapter, BibleTranslation translation) {
+    final chapters = _bookCache[translation]?[book];
     if (chapters == null || !chapters.containsKey(chapter)) {
       return null;
     }
@@ -86,5 +89,9 @@ class BibleDataSource {
 
   int getChapterCount(String book) {
     return AppConstants.chaptersPerBook[book] ?? 0;
+  }
+
+  String _loadingKey(String book, BibleTranslation translation) {
+    return '${translation.id}_$book';
   }
 }

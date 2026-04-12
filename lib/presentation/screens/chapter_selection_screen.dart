@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/bible_provider.dart';
 import '../providers/user_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../widgets/translation_selector.dart';
 import 'reading_screen.dart';
 
 class ChapterSelectionScreen extends StatelessWidget {
@@ -17,6 +18,7 @@ class ChapterSelectionScreen extends StatelessWidget {
             return Text(bibleProvider.selectedBook);
           },
         ),
+        actions: const [TranslationSelector()],
       ),
       body: Consumer2<BibleProvider, UserProvider>(
         builder: (context, bibleProvider, userProvider, _) {
