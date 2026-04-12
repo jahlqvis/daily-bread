@@ -19,21 +19,31 @@ class BibleProvider extends ChangeNotifier {
   Future<void> loadBible() async {
     _isLoading = true;
     notifyListeners();
-    
-    await _dataSource.loadBibleData();
-    
+
+    await _dataSource.preloadBook(_selectedBook);
+
     _isLoading = false;
     notifyListeners();
   }
 
-  void selectBook(String book) {
+  Future<void> selectBook(String book) async {
+    if (_selectedBook == book) return;
+    _isLoading = true;
     _selectedBook = book;
     _selectedChapter = 1;
     notifyListeners();
+    await _dataSource.preloadBook(book);
+    _isLoading = false;
+    notifyListeners();
   }
 
-  void selectChapter(int chapter) {
+  Future<void> selectChapter(int chapter) async {
+    if (_selectedChapter == chapter) return;
+    _isLoading = true;
     _selectedChapter = chapter;
+    notifyListeners();
+    await _dataSource.preloadBook(_selectedBook);
+    _isLoading = false;
     notifyListeners();
   }
 
