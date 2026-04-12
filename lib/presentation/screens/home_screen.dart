@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/user_provider.dart';
+import '../providers/bible_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/constants/bible_translation.dart';
+import '../widgets/translation_selector.dart';
 import 'reading_screen.dart';
 import 'progress_screen.dart';
 import 'badges_screen.dart';
@@ -17,6 +20,7 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('DailyBread'),
         actions: [
+          const TranslationSelector(),
           IconButton(
             icon: const Icon(Icons.emoji_events),
             onPressed: () => Navigator.push(
@@ -48,6 +52,8 @@ class HomeScreen extends StatelessWidget {
                 _buildStreakCard(context, user.currentStreak, user.longestStreak),
                 const SizedBox(height: 16),
                 _buildXpCard(context, userProvider),
+                const SizedBox(height: 16),
+                _buildTranslationCard(context),
                 const SizedBox(height: 16),
                 _buildTodayReadingCard(context),
                 if (userProvider.lastXpGain != null) ...[
@@ -227,6 +233,58 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTranslationCard(BuildContext context) {
+    return Consumer<BibleProvider>(
+      builder: (context, bibleProvider, _) {
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Translation',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Choose the Bible translation you prefer for reading today.',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: bibleProvider.availableTranslations
+                      .map(
+                        (translation) => ChoiceChip(
+                          label: Text(translation.shortLabel),
+                          selected: bibleProvider.selectedTranslation == translation,
+                          onSelected: (_) => bibleProvider.selectTranslation(translation),
+                          selectedColor: AppTheme.primaryColor,
+                          labelStyle: TextStyle(
+                            color: bibleProvider.selectedTranslation == translation
+                                ? Colors.white
+                                : AppTheme.primaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          side: const BorderSide(color: AppTheme.primaryColor),
+                          backgroundColor: AppTheme.primaryColor.withAlpha(25),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

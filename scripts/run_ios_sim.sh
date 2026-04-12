@@ -22,6 +22,7 @@ EOF
 fi
 
 echo "[iOS] Building Runner for simulator..."
+rm -rf "$DERIVED_DATA"
 xcodebuild \
   -workspace "$IOS_DIR/Runner.xcworkspace" \
   -scheme Runner \
