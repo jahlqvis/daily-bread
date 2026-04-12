@@ -18,7 +18,7 @@ After cloning/moving the repo, run:
 ## Project layout
 
 - `lib/` – app code (Providers for user/Bible state, screens for dashboard, reading, badges, etc.)
-- `assets/` – placeholder Bible passages (expand with full content later)
+- `assets/` – `bible/kjv_books/*.json` contains per-book KJV content (ASV/WEB can follow same pattern)
 - `scripts/` – helper scripts for iOS builds (`xcode_backend_wrapper.sh`, `run_ios_sim.sh`)
 
 ## Running on iOS Simulator
@@ -47,8 +47,14 @@ If the build fails, inspect `/tmp/run_ios_sim_build.log`. Common fixes:
 
 The output lives in `build/web/` and has been verified locally.
 
+## Continuous Integration
+
+- `.github/workflows/flutter.yml` runs on every push/PR to `master`.
+- Job 1 (`Analyze, Test & Web Build`) runs on Ubuntu, executes `flutter pub get`, `flutter analyze`, `flutter test`, and `flutter build web --release` with cached pub packages.
+- Job 2 (`iOS Simulator Build`) runs on `macos-14`, caches CocoaPods, installs pods, and runs `xcodebuild … CODE_SIGNING_ALLOWED=NO` to ensure the Runner target continues to build despite macOS 15/Xcode 26 codesign restrictions.
+
 ## Next steps
 
-1. Expand Bible content beyond the current sample passages.
+1. Add ASV/WEB translation packs using the same per-book loader and wire a translation selector in-app.
 2. Add push notifications and Firebase/cloud sync for streaks.
 3. Prepare Android + App Store distribution tooling once Apple resolves the macOS 15 signing bug (or after downgrading to Xcode 15).
