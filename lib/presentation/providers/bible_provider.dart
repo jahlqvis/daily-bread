@@ -60,8 +60,11 @@ class BibleProvider extends ChangeNotifier {
   Future<void> _withLoading(Future<void> Function() task) async {
     _isLoading = true;
     notifyListeners();
-    await task();
-    _isLoading = false;
-    notifyListeners();
+    try {
+      await task();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 }

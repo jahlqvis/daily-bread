@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../../core/constants/app_constants.dart';
@@ -34,7 +35,7 @@ class BibleDataSource {
   }
 
   Future<void> _loadBook(String book, BibleTranslation translation) async {
-    final slug = bookSlug(book);
+    final slug = assetSlugFor(book, translation);
     final path = '${translation.assetDirectory}/$slug.json';
     final jsonString = await rootBundle.loadString(path);
     final Map<String, dynamic> jsonMap = jsonDecode(jsonString) as Map<String, dynamic>;
@@ -69,6 +70,36 @@ class BibleDataSource {
     }
 
     _bookCache[translation]![book] = chapterMap;
+  }
+
+  @visibleForTesting
+  static String assetSlugFor(String book, BibleTranslation translation) {
+    final baseSlug = bookSlug(book);
+    if (translation == BibleTranslation.web) {
+      return baseSlug;
+    }
+
+    final romanSlug = baseSlug.replaceFirstMapped(
+      RegExp(r'^(1|2|3)_'),
+      (match) {
+        switch (match.group(1)) {
+          case '1':
+            return 'i_';
+          case '2':
+            return 'ii_';
+          case '3':
+            return 'iii_';
+          default:
+            return match.group(0) ?? '';
+        }
+      },
+    );
+
+    if (romanSlug == 'revelation') {
+      return 'revelation_of_john';
+    }
+
+    return romanSlug;
   }
 
   BibleChapter? getChapter(String book, int chapter, BibleTranslation translation) {

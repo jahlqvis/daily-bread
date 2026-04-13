@@ -25,4 +25,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/bible/
+    - assets/bible/kjv_books/
+    - assets/bible/asv_books/
+    - assets/bible/web_books/
