@@ -27,9 +27,13 @@ class ReadingScreen extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
+          if (bibleProvider.loadError != null) {
+            return _buildLoadError(context, bibleProvider);
+          }
+
           final chapter = bibleProvider.getCurrentChapter();
           if (chapter == null) {
-            return _buildComingSoon(context, bibleProvider);
+            return _buildNoContent(context, bibleProvider);
           }
 
           final isRead = userProvider.user.readingProgress[chapter.book]?.contains(chapter.chapter) ?? false;
@@ -58,7 +62,7 @@ class ReadingScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildComingSoon(BuildContext context, BibleProvider bibleProvider) {
+  Widget _buildLoadError(BuildContext context, BibleProvider bibleProvider) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -66,13 +70,13 @@ class ReadingScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.book_outlined,
+              Icons.error_outline,
               size: 80,
-              color: Colors.grey[400],
+              color: AppTheme.errorColor,
             ),
             const SizedBox(height: 24),
             const Text(
-              'Coming Soon',
+              'Load Failed',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -80,7 +84,47 @@ class ReadingScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '${bibleProvider.selectedBook} ${bibleProvider.selectedChapter}\nwill be available soon.\nFor now, enjoy the sample passages.',
+              '${bibleProvider.selectedBook} ${bibleProvider.selectedChapter} (${bibleProvider.selectedTranslation.shortLabel})\n${bibleProvider.loadError}',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await bibleProvider.retryCurrentSelection();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoContent(BuildContext context, BibleProvider bibleProvider) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.menu_book_outlined,
+              size: 80,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'No Content Available',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${bibleProvider.selectedBook} ${bibleProvider.selectedChapter} is not available in ${bibleProvider.selectedTranslation.shortLabel}.\nTry a different chapter or translation.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey[600]),
             ),

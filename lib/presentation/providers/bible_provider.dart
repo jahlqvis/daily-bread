@@ -7,6 +7,7 @@ import '../../core/constants/bible_translation.dart';
 class BibleProvider extends ChangeNotifier {
   final BibleDataSource _dataSource;
   bool _isLoading = true;
+  String? _loadError;
   String _selectedBook = 'Genesis';
   int _selectedChapter = 1;
   BibleTranslation _selectedTranslation = BibleTranslation.kjv;
@@ -14,6 +15,7 @@ class BibleProvider extends ChangeNotifier {
   BibleProvider(this._dataSource);
 
   bool get isLoading => _isLoading;
+  String? get loadError => _loadError;
   String get selectedBook => _selectedBook;
   int get selectedChapter => _selectedChapter;
   BibleTranslation get selectedTranslation => _selectedTranslation;
@@ -57,11 +59,22 @@ class BibleProvider extends ChangeNotifier {
     return _dataSource.getChapter(book, chapter, _selectedTranslation) != null;
   }
 
+  Future<void> retryCurrentSelection() async {
+    await _withLoading(
+      () => _dataSource.preloadBook(_selectedBook, _selectedTranslation),
+    );
+  }
+
   Future<void> _withLoading(Future<void> Function() task) async {
     _isLoading = true;
+    _loadError = null;
     notifyListeners();
     try {
       await task();
+      _loadError = null;
+    } catch (_) {
+      _loadError =
+          'Could not load Bible content right now. Please try again.';
     } finally {
       _isLoading = false;
       notifyListeners();
