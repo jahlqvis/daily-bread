@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/user_provider.dart';
 import '../providers/bible_provider.dart';
+import '../providers/reading_plan_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/bible_translation.dart';
 import '../widgets/translation_selector.dart';
@@ -11,6 +12,7 @@ import 'progress_screen.dart';
 import 'badges_screen.dart';
 import 'book_selection_screen.dart';
 import 'verse_search_screen.dart';
+import 'reading_plans_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -27,6 +29,13 @@ class HomeScreen extends StatelessWidget {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const VerseSearchScreen()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ReadingPlansScreen()),
             ),
           ),
           IconButton(
@@ -67,6 +76,8 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 _buildTranslationCard(context),
                 const SizedBox(height: 16),
+                _buildPlanCard(context),
+                const SizedBox(height: 16),
                 _buildTodayReadingCard(context),
                 if (userProvider.lastXpGain != null) ...[
                   const SizedBox(height: 16),
@@ -85,6 +96,134 @@ class HomeScreen extends StatelessWidget {
         icon: const Icon(Icons.menu_book),
         label: const Text('Read'),
       ),
+    );
+  }
+
+  Widget _buildPlanCard(BuildContext context) {
+    return Consumer2<ReadingPlanProvider, UserProvider>(
+      builder: (context, planProvider, userProvider, _) {
+        if (planProvider.isLoading) {
+          return const Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+
+        final activePlan = planProvider.activePlan;
+        final nextChapter = planProvider.nextChapter(userProvider.user);
+
+        if (activePlan == null) {
+          return Card(
+            child: InkWell(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ReadingPlansScreen()),
+              ),
+              borderRadius: BorderRadius.circular(16),
+              child: const Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Reading Plan',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text('Start a plan to get a guided chapter each day.'),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final completed = planProvider.completedCount(userProvider.user);
+        final progress = planProvider.progress(userProvider.user);
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Today\'s Plan',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ReadingPlansScreen(),
+                        ),
+                      ),
+                      child: const Text('Manage'),
+                    ),
+                  ],
+                ),
+                Text(
+                  activePlan.title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Text('$completed / ${activePlan.totalDays} chapters completed'),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 8,
+                    backgroundColor: Colors.grey[200],
+                    valueColor: const AlwaysStoppedAnimation(
+                      AppTheme.primaryColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (nextChapter != null)
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final bibleProvider = context.read<BibleProvider>();
+                      await bibleProvider.selectBook(nextChapter.book);
+                      bibleProvider.selectChapter(nextChapter.chapter);
+                      if (context.mounted) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ReadingScreen(),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.play_arrow),
+                    label: Text('Read ${nextChapter.label}'),
+                  )
+                else
+                  const Text(
+                    'Plan complete! Pick a new one or keep exploring.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

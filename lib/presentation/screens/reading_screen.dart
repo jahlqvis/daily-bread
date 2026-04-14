@@ -6,6 +6,7 @@ import '../../core/constants/bible_translation.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/bible_passage_model.dart';
 import '../widgets/translation_selector.dart';
+import '../providers/reading_plan_provider.dart';
 import 'verse_search_screen.dart';
 
 class ReadingScreen extends StatelessWidget {
@@ -282,15 +283,27 @@ class ReadingScreen extends StatelessWidget {
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () async {
-              await context.read<UserProvider>().markChapterAsRead(
+              final planProvider = context.read<ReadingPlanProvider>();
+              final userProvider = context.read<UserProvider>();
+              final isInPlan = planProvider.isChapterInActivePlan(
                 chapter.book,
                 chapter.chapter,
               );
+              await userProvider.markChapterAsRead(
+                chapter.book,
+                chapter.chapter,
+              );
+
+              final updatedUser = userProvider.user;
+              final nextPlanChapter = planProvider.nextChapter(updatedUser);
+
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
+                  SnackBar(
                     content: Text(
-                      'Chapter marked as read! Keep up the great work!',
+                      isInPlan && nextPlanChapter != null
+                          ? 'Chapter marked as read! Next in your plan: ${nextPlanChapter.label}.'
+                          : 'Chapter marked as read! Keep up the great work!',
                     ),
                     backgroundColor: AppTheme.primaryColor,
                   ),

@@ -4,6 +4,7 @@ import '../models/user_model.dart';
 
 class LocalDataSource {
   static const String _userKey = 'user_data';
+  static const String _activePlanIdKey = 'active_plan_id';
   final SharedPreferences _prefs;
 
   LocalDataSource(this._prefs);
@@ -22,5 +23,17 @@ class LocalDataSource {
 
   Future<void> clearUser() async {
     await _prefs.remove(_userKey);
+  }
+
+  String? getActivePlanId() {
+    return _prefs.getString(_activePlanIdKey);
+  }
+
+  Future<void> saveActivePlanId(String planId) async {
+    await _prefs.setString(_activePlanIdKey, planId);
+  }
+
+  Future<void> clearActivePlanId() async {
+    await _prefs.remove(_activePlanIdKey);
   }
 }

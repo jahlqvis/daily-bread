@@ -7,16 +7,17 @@ import 'data/datasources/bible_data_source.dart';
 import 'data/repositories/user_repository.dart';
 import 'presentation/providers/user_provider.dart';
 import 'presentation/providers/bible_provider.dart';
+import 'presentation/providers/reading_plan_provider.dart';
 import 'presentation/screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
-  
+
   final localDataSource = LocalDataSource(prefs);
   final bibleDataSource = BibleDataSource();
   final userRepository = UserRepository(localDataSource);
-  
+
   runApp(
     MultiProvider(
       providers: [
@@ -25,6 +26,9 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (_) => BibleProvider(bibleDataSource)..loadBible(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => ReadingPlanProvider(localDataSource)..loadPlanState(),
         ),
       ],
       child: const DailyBreadApp(),

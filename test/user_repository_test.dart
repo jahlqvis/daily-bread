@@ -175,6 +175,7 @@ void main() {
 
 class _InMemoryLocalDataSource implements LocalDataSource {
   UserModel _user = UserModel();
+  String? _activePlanId;
 
   void seedUser(UserModel user) {
     _user = user;
@@ -193,5 +194,20 @@ class _InMemoryLocalDataSource implements LocalDataSource {
   @override
   Future<void> saveUser(UserModel user) async {
     _user = user;
+  }
+
+  @override
+  Future<void> clearActivePlanId() async {
+    _activePlanId = null;
+  }
+
+  @override
+  String? getActivePlanId() {
+    return _activePlanId;
+  }
+
+  @override
+  Future<void> saveActivePlanId(String planId) async {
+    _activePlanId = planId;
   }
 }
