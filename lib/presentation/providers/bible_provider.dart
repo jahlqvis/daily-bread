@@ -12,6 +12,7 @@ class BibleProvider extends ChangeNotifier {
   String? _searchError;
   String _lastSearchQuery = '';
   List<BiblePassage> _searchResults = const [];
+  int? _highlightedVerse;
   String _selectedBook = 'Genesis';
   int _selectedChapter = 1;
   BibleTranslation _selectedTranslation = BibleTranslation.kjv;
@@ -24,6 +25,7 @@ class BibleProvider extends ChangeNotifier {
   String? get searchError => _searchError;
   String get lastSearchQuery => _lastSearchQuery;
   List<BiblePassage> get searchResults => _searchResults;
+  int? get highlightedVerse => _highlightedVerse;
   String get selectedBook => _selectedBook;
   int get selectedChapter => _selectedChapter;
   BibleTranslation get selectedTranslation => _selectedTranslation;
@@ -40,6 +42,7 @@ class BibleProvider extends ChangeNotifier {
     if (_selectedBook == book) return;
     _selectedBook = book;
     _selectedChapter = 1;
+    _highlightedVerse = null;
     notifyListeners();
     await _withLoading(
       () => _dataSource.preloadBook(book, _selectedTranslation),
@@ -49,17 +52,22 @@ class BibleProvider extends ChangeNotifier {
   void selectChapter(int chapter) {
     if (_selectedChapter == chapter) return;
     _selectedChapter = chapter;
+    _highlightedVerse = null;
     notifyListeners();
   }
 
   Future<void> selectTranslation(BibleTranslation translation) async {
     if (_selectedTranslation == translation) return;
     _selectedTranslation = translation;
-    clearSearchResults(notify: false);
+    _highlightedVerse = null;
     notifyListeners();
     await _withLoading(
       () => _dataSource.preloadBook(_selectedBook, translation),
     );
+
+    if (_lastSearchQuery.isNotEmpty) {
+      await searchVerses(_lastSearchQuery);
+    }
   }
 
   BibleChapter? getCurrentChapter() {
@@ -120,6 +128,11 @@ class BibleProvider extends ChangeNotifier {
     if (notify) {
       notifyListeners();
     }
+  }
+
+  void setHighlightedVerse(int? verse) {
+    _highlightedVerse = verse;
+    notifyListeners();
   }
 
   Future<void> _withLoading(Future<void> Function() task) async {

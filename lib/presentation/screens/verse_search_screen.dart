@@ -16,6 +16,7 @@ class VerseSearchScreen extends StatefulWidget {
 
 class _VerseSearchScreenState extends State<VerseSearchScreen> {
   final TextEditingController _queryController = TextEditingController();
+  bool _hydratedQuery = false;
 
   @override
   void dispose() {
@@ -27,6 +28,15 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
     await context.read<BibleProvider>().searchVerses(_queryController.text);
   }
 
+  void _hydrateQuery(BibleProvider bibleProvider) {
+    if (_hydratedQuery) {
+      return;
+    }
+
+    _queryController.text = bibleProvider.lastSearchQuery;
+    _hydratedQuery = true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -36,6 +46,8 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
       ),
       body: Consumer<BibleProvider>(
         builder: (context, bibleProvider, _) {
+          _hydrateQuery(bibleProvider);
+
           return Column(
             children: [
               Padding(
@@ -43,13 +55,26 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
                 child: TextField(
                   controller: _queryController,
                   textInputAction: TextInputAction.search,
+                  onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _runSearch(context),
                   decoration: InputDecoration(
                     hintText: 'Search verses (e.g. love one another)',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: IconButton(
-                      icon: const Icon(Icons.arrow_forward),
-                      onPressed: () => _runSearch(context),
+                      icon: Icon(
+                        _queryController.text.trim().isEmpty
+                            ? Icons.arrow_forward
+                            : Icons.clear,
+                      ),
+                      onPressed: () {
+                        if (_queryController.text.trim().isEmpty) {
+                          _runSearch(context);
+                        } else {
+                          _queryController.clear();
+                          context.read<BibleProvider>().clearSearchResults();
+                          setState(() {});
+                        }
+                      },
                     ),
                     border: const OutlineInputBorder(),
                   ),
@@ -66,12 +91,28 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              if (bibleProvider.isSearching)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: LinearProgressIndicator(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: AnimatedOpacity(
+                  opacity: bibleProvider.isSearching ? 1 : 0,
+                  duration: const Duration(milliseconds: 150),
+                  child: const LinearProgressIndicator(),
                 ),
+              ),
               const SizedBox(height: 8),
+              if (bibleProvider.lastSearchQuery.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '${bibleProvider.searchResults.length} result(s)',
+                      style: TextStyle(color: Colors.grey[700]),
+                    ),
+                  ),
+                ),
+              if (bibleProvider.lastSearchQuery.isNotEmpty)
+                const SizedBox(height: 8),
               Expanded(child: _buildSearchBody(context, bibleProvider)),
             ],
           );
@@ -102,6 +143,19 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
       );
     }
 
+    if (bibleProvider.isSearching && bibleProvider.searchResults.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 12),
+            Text('Searching verses...'),
+          ],
+        ),
+      );
+    }
+
     if (bibleProvider.lastSearchQuery.isEmpty) {
       return const Center(
         child: Text('Type a phrase above to search this translation.'),
@@ -121,16 +175,66 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
       itemBuilder: (context, index) {
         final result = results[index];
         return ListTile(
+          leading: CircleAvatar(
+            radius: 14,
+            child: Text('${index + 1}', style: const TextStyle(fontSize: 11)),
+          ),
           title: Text(result.reference),
-          subtitle: Text(
-            result.text,
+          subtitle: RichText(
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
+            text: _highlightedText(
+              result.text,
+              bibleProvider.lastSearchQuery,
+              Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
+          trailing: const Icon(Icons.arrow_forward_ios, size: 14),
           onTap: () => _openResult(context, result),
         );
       },
     );
+  }
+
+  TextSpan _highlightedText(String text, String query, TextStyle? baseStyle) {
+    final terms = query
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty)
+        .toSet();
+
+    if (terms.isEmpty) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+
+    final escapedTerms = terms.map(RegExp.escape).join('|');
+    final expression = RegExp('($escapedTerms)', caseSensitive: false);
+    final matches = expression.allMatches(text).toList();
+
+    if (matches.isEmpty) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+
+    final children = <InlineSpan>[];
+    var cursor = 0;
+    for (final match in matches) {
+      if (match.start > cursor) {
+        children.add(TextSpan(text: text.substring(cursor, match.start)));
+      }
+      children.add(
+        TextSpan(
+          text: text.substring(match.start, match.end),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      );
+      cursor = match.end;
+    }
+
+    if (cursor < text.length) {
+      children.add(TextSpan(text: text.substring(cursor)));
+    }
+
+    return TextSpan(style: baseStyle, children: children);
   }
 
   Future<void> _openResult(BuildContext context, BiblePassage result) async {
@@ -138,13 +242,12 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
     final provider = context.read<BibleProvider>();
     await provider.selectBook(result.book);
     provider.selectChapter(result.chapter);
+    provider.setHighlightedVerse(result.verse);
 
     if (!mounted) {
       return;
     }
 
-    navigator.pushReplacement(
-      MaterialPageRoute(builder: (_) => const ReadingScreen()),
-    );
+    navigator.push(MaterialPageRoute(builder: (_) => const ReadingScreen()));
   }
 }

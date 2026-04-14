@@ -60,13 +60,19 @@ class ReadingScreen extends StatelessWidget {
                 chapter,
                 isRead,
                 bibleProvider.selectedTranslation.shortLabel,
+                bibleProvider.highlightedVerse,
               ),
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: chapter.verses.length,
                   itemBuilder: (context, index) {
-                    return _buildVerse(chapter.verses[index], index + 1);
+                    final passage = chapter.verses[index];
+                    return _buildVerse(
+                      passage,
+                      passage.verse,
+                      bibleProvider.highlightedVerse == passage.verse,
+                    );
                   },
                 ),
               ),
@@ -140,6 +146,7 @@ class ReadingScreen extends StatelessWidget {
     BibleChapter chapter,
     bool isRead,
     String translationLabel,
+    int? highlightedVerse,
   ) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -161,6 +168,17 @@ class ReadingScreen extends StatelessWidget {
                   '${chapter.verses.length} verses',
                   style: TextStyle(color: Colors.grey[600]),
                 ),
+                if (highlightedVerse != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Jumped to verse $highlightedVerse',
+                      style: const TextStyle(
+                        color: AppTheme.primaryColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -191,38 +209,57 @@ class ReadingScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildVerse(BiblePassage passage, int displayNumber) {
+  Widget _buildVerse(
+    BiblePassage passage,
+    int displayNumber,
+    bool isHighlighted,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withAlpha(25),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Center(
-              child: Text(
-                '$displayNumber',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryColor,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isHighlighted
+              ? AppTheme.primaryColor.withAlpha(22)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isHighlighted
+                ? AppTheme.primaryColor.withAlpha(90)
+                : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withAlpha(25),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                child: Text(
+                  '$displayNumber',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryColor,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              passage.text,
-              style: const TextStyle(fontSize: 16, height: 1.6),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                passage.text,
+                style: const TextStyle(fontSize: 16, height: 1.6),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
