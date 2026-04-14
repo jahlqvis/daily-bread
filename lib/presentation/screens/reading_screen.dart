@@ -6,6 +6,7 @@ import '../../core/constants/bible_translation.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/bible_passage_model.dart';
 import '../widgets/translation_selector.dart';
+import 'verse_search_screen.dart';
 
 class ReadingScreen extends StatelessWidget {
   const ReadingScreen({super.key});
@@ -16,10 +17,21 @@ class ReadingScreen extends StatelessWidget {
       appBar: AppBar(
         title: Consumer<BibleProvider>(
           builder: (context, bibleProvider, _) {
-            return Text('${bibleProvider.selectedBook} ${bibleProvider.selectedChapter}');
+            return Text(
+              '${bibleProvider.selectedBook} ${bibleProvider.selectedChapter}',
+            );
           },
         ),
-        actions: const [TranslationSelector()],
+        actions: [
+          const TranslationSelector(),
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VerseSearchScreen()),
+            ),
+          ),
+        ],
       ),
       body: Consumer2<BibleProvider, UserProvider>(
         builder: (context, bibleProvider, userProvider, child) {
@@ -36,7 +48,11 @@ class ReadingScreen extends StatelessWidget {
             return _buildNoContent(context, bibleProvider);
           }
 
-          final isRead = userProvider.user.readingProgress[chapter.book]?.contains(chapter.chapter) ?? false;
+          final isRead =
+              userProvider.user.readingProgress[chapter.book]?.contains(
+                chapter.chapter,
+              ) ??
+              false;
 
           return Column(
             children: [
@@ -69,18 +85,11 @@ class ReadingScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 80,
-              color: AppTheme.errorColor,
-            ),
+            Icon(Icons.error_outline, size: 80, color: AppTheme.errorColor),
             const SizedBox(height: 24),
             const Text(
               'Load Failed',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
@@ -109,18 +118,11 @@ class ReadingScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.menu_book_outlined,
-              size: 80,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.menu_book_outlined, size: 80, color: Colors.grey[400]),
             const SizedBox(height: 24),
             const Text(
               'No Content Available',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
@@ -134,7 +136,11 @@ class ReadingScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildChapterHeader(BibleChapter chapter, bool isRead, String translationLabel) {
+  Widget _buildChapterHeader(
+    BibleChapter chapter,
+    bool isRead,
+    String translationLabel,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       color: isRead ? AppTheme.primaryColor.withAlpha(25) : Colors.grey[100],
@@ -172,7 +178,10 @@ class ReadingScreen extends StatelessWidget {
                   SizedBox(width: 4),
                   Text(
                     'Read',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -210,10 +219,7 @@ class ReadingScreen extends StatelessWidget {
           Expanded(
             child: Text(
               passage.text,
-              style: const TextStyle(
-                fontSize: 16,
-                height: 1.6,
-              ),
+              style: const TextStyle(fontSize: 16, height: 1.6),
             ),
           ),
         ],
@@ -240,13 +246,15 @@ class ReadingScreen extends StatelessWidget {
           child: ElevatedButton.icon(
             onPressed: () async {
               await context.read<UserProvider>().markChapterAsRead(
-                    chapter.book,
-                    chapter.chapter,
-                  );
+                chapter.book,
+                chapter.chapter,
+              );
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Chapter marked as read! Keep up the great work!'),
+                    content: Text(
+                      'Chapter marked as read! Keep up the great work!',
+                    ),
                     backgroundColor: AppTheme.primaryColor,
                   ),
                 );

@@ -10,6 +10,7 @@ import 'reading_screen.dart';
 import 'progress_screen.dart';
 import 'badges_screen.dart';
 import 'book_selection_screen.dart';
+import 'verse_search_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -21,6 +22,13 @@ class HomeScreen extends StatelessWidget {
         title: const Text('DailyBread'),
         actions: [
           const TranslationSelector(),
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VerseSearchScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.emoji_events),
             onPressed: () => Navigator.push(
@@ -41,7 +49,7 @@ class HomeScreen extends StatelessWidget {
         builder: (context, userProvider, child) {
           final user = userProvider.user;
           final today = DateFormat('EEEE, MMMM d').format(DateTime.now());
-          
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -49,7 +57,11 @@ class HomeScreen extends StatelessWidget {
               children: [
                 _buildWelcomeCard(today),
                 const SizedBox(height: 16),
-                _buildStreakCard(context, user.currentStreak, user.longestStreak),
+                _buildStreakCard(
+                  context,
+                  user.currentStreak,
+                  user.longestStreak,
+                ),
                 const SizedBox(height: 16),
                 _buildXpCard(context, userProvider),
                 const SizedBox(height: 16),
@@ -85,18 +97,12 @@ class HomeScreen extends StatelessWidget {
           children: [
             Text(
               today,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 8),
             const Text(
               'Ready for your daily reading?',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -109,7 +115,11 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStreakCard(BuildContext context, int currentStreak, int longestStreak) {
+  Widget _buildStreakCard(
+    BuildContext context,
+    int currentStreak,
+    int longestStreak,
+  ) {
     return Card(
       color: AppTheme.streakFireColor.withAlpha(25),
       child: Padding(
@@ -147,10 +157,7 @@ class HomeScreen extends StatelessWidget {
                       const SizedBox(width: 8),
                       const Text(
                         'day streak',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 18, color: Colors.grey),
                       ),
                     ],
                   ),
@@ -222,7 +229,9 @@ class HomeScreen extends StatelessWidget {
                 value: userProvider.levelProgress,
                 minHeight: 8,
                 backgroundColor: Colors.grey[200],
-                valueColor: const AlwaysStoppedAnimation(AppTheme.levelPurpleColor),
+                valueColor: const AlwaysStoppedAnimation(
+                  AppTheme.levelPurpleColor,
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -247,10 +256,7 @@ class HomeScreen extends StatelessWidget {
               children: [
                 const Text(
                   'Translation',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -265,11 +271,14 @@ class HomeScreen extends StatelessWidget {
                       .map(
                         (translation) => ChoiceChip(
                           label: Text(translation.shortLabel),
-                          selected: bibleProvider.selectedTranslation == translation,
-                          onSelected: (_) => bibleProvider.selectTranslation(translation),
+                          selected:
+                              bibleProvider.selectedTranslation == translation,
+                          onSelected: (_) =>
+                              bibleProvider.selectTranslation(translation),
                           selectedColor: AppTheme.primaryColor,
                           labelStyle: TextStyle(
-                            color: bibleProvider.selectedTranslation == translation
+                            color:
+                                bibleProvider.selectedTranslation == translation
                                 ? Colors.white
                                 : AppTheme.primaryColor,
                             fontWeight: FontWeight.bold,

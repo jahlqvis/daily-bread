@@ -63,9 +63,42 @@ void main() {
       final dataSource = BibleDataSource();
 
       await dataSource.preloadBook('1 Samuel', BibleTranslation.kjv);
-      final chapter = dataSource.getChapter('1 Samuel', 1, BibleTranslation.kjv);
+      final chapter = dataSource.getChapter(
+        '1 Samuel',
+        1,
+        BibleTranslation.kjv,
+      );
 
       expect(chapter, isNotNull);
+    });
+  });
+
+  group('BibleDataSource searchVerses', () {
+    test('finds verses by phrase in selected translation', () async {
+      final dataSource = BibleDataSource();
+
+      final results = await dataSource.searchVerses(
+        'in the beginning',
+        BibleTranslation.web,
+        books: const ['Genesis'],
+      );
+
+      expect(results, isNotEmpty);
+      expect(results.first.book, 'Genesis');
+      expect(results.first.chapter, 1);
+      expect(results.first.verse, 1);
+    });
+
+    test('returns empty list when no verse matches query', () async {
+      final dataSource = BibleDataSource();
+
+      final results = await dataSource.searchVerses(
+        'zzzzqwertynotaverse',
+        BibleTranslation.kjv,
+        books: const ['Genesis'],
+      );
+
+      expect(results, isEmpty);
     });
   });
 }

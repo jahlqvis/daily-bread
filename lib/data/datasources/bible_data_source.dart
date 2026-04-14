@@ -10,7 +10,7 @@ import '../models/bible_passage_model.dart';
 
 class BibleDataSource {
   static final Map<BibleTranslation, Map<String, Map<int, List<BiblePassage>>>>
-      _bookCache = {};
+  _bookCache = {};
   static final Map<String, Future<void>> _loadingBooks = {};
 
   Future<void> loadBibleData(BibleTranslation translation) async {
@@ -38,7 +38,8 @@ class BibleDataSource {
     final slug = assetSlugFor(book, translation);
     final path = '${translation.assetDirectory}/$slug.json';
     final jsonString = await rootBundle.loadString(path);
-    final Map<String, dynamic> jsonMap = jsonDecode(jsonString) as Map<String, dynamic>;
+    final Map<String, dynamic> jsonMap =
+        jsonDecode(jsonString) as Map<String, dynamic>;
     final List<dynamic> chapters = jsonMap['chapters'] as List<dynamic>? ?? [];
     final chapterMap = <int, List<BiblePassage>>{};
 
@@ -51,18 +52,20 @@ class BibleDataSource {
       final passages = verses
           .whereType<Map<String, dynamic>>()
           .map((verseEntry) {
-        final int? verseNumber = verseEntry['verse'] as int?;
-        final String? text = verseEntry['text'] as String?;
-        if (verseNumber == null || text == null) {
-          return null;
-        }
-        return BiblePassage(
-          book: book,
-          chapter: chapterNumber,
-          verse: verseNumber,
-          text: text.trim(),
-        );
-      }).whereType<BiblePassage>().toList();
+            final int? verseNumber = verseEntry['verse'] as int?;
+            final String? text = verseEntry['text'] as String?;
+            if (verseNumber == null || text == null) {
+              return null;
+            }
+            return BiblePassage(
+              book: book,
+              chapter: chapterNumber,
+              verse: verseNumber,
+              text: text.trim(),
+            );
+          })
+          .whereType<BiblePassage>()
+          .toList();
 
       if (passages.isNotEmpty) {
         chapterMap[chapterNumber] = passages;
@@ -79,21 +82,20 @@ class BibleDataSource {
       return baseSlug;
     }
 
-    final romanSlug = baseSlug.replaceFirstMapped(
-      RegExp(r'^(1|2|3)_'),
-      (match) {
-        switch (match.group(1)) {
-          case '1':
-            return 'i_';
-          case '2':
-            return 'ii_';
-          case '3':
-            return 'iii_';
-          default:
-            return match.group(0) ?? '';
-        }
-      },
-    );
+    final romanSlug = baseSlug.replaceFirstMapped(RegExp(r'^(1|2|3)_'), (
+      match,
+    ) {
+      switch (match.group(1)) {
+        case '1':
+          return 'i_';
+        case '2':
+          return 'ii_';
+        case '3':
+          return 'iii_';
+        default:
+          return match.group(0) ?? '';
+      }
+    });
 
     if (romanSlug == 'revelation') {
       return 'revelation_of_john';
@@ -102,7 +104,11 @@ class BibleDataSource {
     return romanSlug;
   }
 
-  BibleChapter? getChapter(String book, int chapter, BibleTranslation translation) {
+  BibleChapter? getChapter(
+    String book,
+    int chapter,
+    BibleTranslation translation,
+  ) {
     final chapters = _bookCache[translation]?[book];
     if (chapters == null || !chapters.containsKey(chapter)) {
       return null;
@@ -112,6 +118,53 @@ class BibleDataSource {
       chapter: chapter,
       verses: chapters[chapter]!,
     );
+  }
+
+  Future<List<BiblePassage>> searchVerses(
+    String query,
+    BibleTranslation translation, {
+    int limit = 100,
+    Iterable<String>? books,
+  }) async {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return [];
+    }
+
+    final terms = normalized
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty)
+        .toList();
+
+    final results = <BiblePassage>[];
+
+    final booksToSearch = books ?? AppConstants.booksOfTheBible;
+    for (final book in booksToSearch) {
+      await preloadBook(book, translation);
+      final chapters = _bookCache[translation]?[book];
+      if (chapters == null || chapters.isEmpty) {
+        continue;
+      }
+
+      final chapterNumbers = chapters.keys.toList()..sort();
+      for (final chapter in chapterNumbers) {
+        final verses = chapters[chapter] ?? const [];
+        for (final verse in verses) {
+          final text = verse.text.toLowerCase();
+          final isMatch = terms.every(text.contains);
+          if (!isMatch) {
+            continue;
+          }
+
+          results.add(verse);
+          if (results.length >= limit) {
+            return results;
+          }
+        }
+      }
+    }
+
+    return results;
   }
 
   List<String> getBooks() {
