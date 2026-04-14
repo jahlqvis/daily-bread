@@ -1,6 +1,5 @@
 import 'package:daily_bread/core/constants/bible_translation.dart';
 import 'package:daily_bread/data/datasources/bible_data_source.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
