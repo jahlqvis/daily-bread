@@ -16,6 +16,10 @@ class ReadingPlanProvider extends ChangeNotifier {
   List<ReadingPlan> get plans => ReadingPlans.all;
   String? get activePlanId => _activePlanId;
 
+  bool hasPlan(String planId) {
+    return plans.any((plan) => plan.id == planId);
+  }
+
   ReadingPlan? get activePlan {
     if (_activePlanId == null) {
       return null;
@@ -32,12 +36,21 @@ class ReadingPlanProvider extends ChangeNotifier {
   Future<void> loadPlanState() async {
     _isLoading = true;
     notifyListeners();
-    _activePlanId = _localDataSource.getActivePlanId();
+    final persistedPlanId = _localDataSource.getActivePlanId();
+    if (persistedPlanId != null && !hasPlan(persistedPlanId)) {
+      _activePlanId = null;
+      await _localDataSource.clearActivePlanId();
+    } else {
+      _activePlanId = persistedPlanId;
+    }
     _isLoading = false;
     notifyListeners();
   }
 
   Future<void> activatePlan(String planId) async {
+    if (!hasPlan(planId)) {
+      throw ArgumentError('Unknown reading plan id: $planId');
+    }
     _activePlanId = planId;
     await _localDataSource.saveActivePlanId(planId);
     notifyListeners();
@@ -66,6 +79,10 @@ class ReadingPlanProvider extends ChangeNotifier {
       return 0;
     }
 
+    return completedCountForPlan(user, plan);
+  }
+
+  int completedCountForPlan(UserModel user, ReadingPlan plan) {
     return plan.chapters.where((reference) {
       return user.readingProgress[reference.book]?.contains(
             reference.chapter,
@@ -80,6 +97,14 @@ class ReadingPlanProvider extends ChangeNotifier {
       return 0;
     }
     return completedCount(user) / plan.totalDays;
+  }
+
+  bool isCompleted(UserModel user) {
+    final plan = activePlan;
+    if (plan == null) {
+      return false;
+    }
+    return completedCount(user) >= plan.totalDays;
   }
 
   ReadingReference? nextChapter(UserModel user) {

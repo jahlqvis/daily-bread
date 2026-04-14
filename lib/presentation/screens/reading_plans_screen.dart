@@ -24,13 +24,11 @@ class ReadingPlansScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final plan = planProvider.plans[index];
               final isActive = planProvider.activePlanId == plan.id;
-              final completed = isActive
-                  ? planProvider.completedCount(userProvider.user)
-                  : plan.chapters.where((reference) {
-                      return userProvider.user.readingProgress[reference.book]
-                              ?.contains(reference.chapter) ??
-                          false;
-                    }).length;
+              final completed = planProvider.completedCountForPlan(
+                userProvider.user,
+                plan,
+              );
+              final isCompleted = completed >= plan.totalDays;
 
               final progress = plan.totalDays == 0
                   ? 0.0
@@ -72,6 +70,26 @@ class ReadingPlansScreen extends StatelessWidget {
                                 ),
                               ),
                             ),
+                          if (!isActive && isCompleted) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Completed',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -110,7 +128,20 @@ class ReadingPlansScreen extends StatelessWidget {
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () async {
-                                await planProvider.activatePlan(plan.id);
+                                if (isActive) {
+                                  return;
+                                }
+
+                                final shouldStart =
+                                    planProvider.activePlanId == null
+                                    ? true
+                                    : await _confirmPlanSwitch(
+                                        context,
+                                        plan.title,
+                                      );
+                                if (shouldStart == true) {
+                                  await planProvider.activatePlan(plan.id);
+                                }
                               },
                               child: Text(
                                 isActive ? 'Continue Plan' : 'Start Plan',
@@ -127,6 +158,30 @@ class ReadingPlansScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  Future<bool?> _confirmPlanSwitch(BuildContext context, String title) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Switch active plan?'),
+          content: Text(
+            'This will make "$title" your active plan. Your previous plan progress is still saved.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Switch'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

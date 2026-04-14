@@ -296,12 +296,16 @@ class ReadingScreen extends StatelessWidget {
 
               final updatedUser = userProvider.user;
               final nextPlanChapter = planProvider.nextChapter(updatedUser);
+              final completedPlan =
+                  isInPlan && planProvider.isCompleted(updatedUser);
 
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      isInPlan && nextPlanChapter != null
+                      completedPlan
+                          ? 'Amazing! You completed your active reading plan.'
+                          : isInPlan && nextPlanChapter != null
                           ? 'Chapter marked as read! Next in your plan: ${nextPlanChapter.label}.'
                           : 'Chapter marked as read! Keep up the great work!',
                     ),

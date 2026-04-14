@@ -145,6 +145,7 @@ class HomeScreen extends StatelessWidget {
 
         final completed = planProvider.completedCount(userProvider.user);
         final progress = planProvider.progress(userProvider.user);
+        final isCompleted = planProvider.isCompleted(userProvider.user);
 
         return Card(
           child: Padding(
@@ -178,6 +179,17 @@ class HomeScreen extends StatelessWidget {
                   activePlan.title,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
+                if (isCompleted)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Completed',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 Text('$completed / ${activePlan.totalDays} chapters completed'),
                 const SizedBox(height: 8),
