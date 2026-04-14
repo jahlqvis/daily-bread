@@ -6,10 +6,8 @@ class UserRepository {
   final LocalDataSource _localDataSource;
   final DateTime Function() _nowProvider;
 
-  UserRepository(
-    this._localDataSource, {
-    DateTime Function()? nowProvider,
-  }) : _nowProvider = nowProvider ?? DateTime.now;
+  UserRepository(this._localDataSource, {DateTime Function()? nowProvider})
+    : _nowProvider = nowProvider ?? DateTime.now;
 
   Future<UserModel> getUser() => _localDataSource.getUser();
 
@@ -17,14 +15,15 @@ class UserRepository {
     final user = await getUser();
     final now = _nowProvider();
     final today = DateTime(now.year, now.month, now.day);
-    
+
     final progress = Map<String, Set<int>>.from(user.readingProgress);
     progress.putIfAbsent(book, () => {});
     progress[book]!.add(chapter);
 
     int newStreak = user.currentStreak;
     int xpGained = AppConstants.xpPerChapter;
-    
+    int newStreakFreezes = user.streakFreezes;
+
     if (user.lastReadDate == null) {
       newStreak = 1;
     } else {
@@ -34,7 +33,7 @@ class UserRepository {
         user.lastReadDate!.day,
       );
       final difference = today.difference(lastRead).inDays;
-      
+
       if (difference == 0) {
       } else if (difference == 1) {
         newStreak = user.currentStreak + 1;
@@ -43,6 +42,7 @@ class UserRepository {
         if (user.streakFreezes > 0 && difference == 2) {
           newStreak = user.currentStreak + 1;
           xpGained += AppConstants.xpPerDayStreak * newStreak;
+          newStreakFreezes = user.streakFreezes - 1;
         } else {
           newStreak = 1;
         }
@@ -59,10 +59,12 @@ class UserRepository {
 
     final newTotalXp = user.totalXp + xpGained;
     final newLevel = _calculateLevel(newTotalXp);
-    final newLongestStreak = newStreak > user.longestStreak ? newStreak : user.longestStreak;
-    
+    final newLongestStreak = newStreak > user.longestStreak
+        ? newStreak
+        : user.longestStreak;
+
     final badges = List<String>.from(user.badges);
-    _checkAndAddBadges(badges, newStreak, progress, user.totalXp, newLevel);
+    _checkAndAddBadges(badges, newStreak, progress, newTotalXp, newLevel);
 
     final updatedUser = user.copyWith(
       currentStreak: newStreak,
@@ -72,6 +74,7 @@ class UserRepository {
       badges: badges,
       lastReadDate: now,
       readingProgress: progress,
+      streakFreezes: newStreakFreezes,
     );
 
     await _localDataSource.saveUser(updatedUser);
@@ -95,7 +98,8 @@ class UserRepository {
     int totalXp,
     int level,
   ) {
-    if (!badges.contains('first_read') && progress.values.any((chapters) => chapters.isNotEmpty)) {
+    if (!badges.contains('first_read') &&
+        progress.values.any((chapters) => chapters.isNotEmpty)) {
       badges.add('first_read');
     }
     if (!badges.contains('streak_7') && streak >= 7) {
@@ -114,7 +118,9 @@ class UserRepository {
       badges.add('level_10');
     }
     if (!badges.contains('bookworm')) {
-      bool readFullBook = progress.values.any((chapters) => chapters.length >= 20);
+      bool readFullBook = progress.values.any(
+        (chapters) => chapters.length >= 20,
+      );
       if (readFullBook) {
         badges.add('bookworm');
       }

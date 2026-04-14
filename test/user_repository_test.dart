@@ -12,10 +12,7 @@ void main() {
   setUp(() {
     dataSource = _InMemoryLocalDataSource();
     currentTime = DateTime(2024, 1, 1);
-    repository = UserRepository(
-      dataSource,
-      nowProvider: () => currentTime,
-    );
+    repository = UserRepository(dataSource, nowProvider: () => currentTime);
   });
 
   group('markChapterAsRead', () {
@@ -35,8 +32,8 @@ void main() {
       final updated = await repository.markChapterAsRead('Exodus', 1);
 
       expect(updated.currentStreak, 2);
-      final expectedXp = (AppConstants.xpPerChapter * 2) +
-          (AppConstants.xpPerDayStreak * 2);
+      final expectedXp =
+          (AppConstants.xpPerChapter * 2) + (AppConstants.xpPerDayStreak * 2);
       expect(updated.totalXp, expectedXp);
       expect(updated.longestStreak, 2);
     });
@@ -58,12 +55,120 @@ void main() {
 
       final updated = await repository.markChapterAsRead('Genesis', 7);
 
-      final expectedGain = AppConstants.xpPerChapter +
+      final expectedGain =
+          AppConstants.xpPerChapter +
           (AppConstants.xpPerDayStreak * 7) +
           AppConstants.streakBonus7Days;
       expect(updated.totalXp, 500 + expectedGain);
       expect(updated.currentStreak, 7);
       expect(updated.badges, contains('streak_7'));
+    });
+
+    test('missing more than one day resets streak without freeze', () async {
+      dataSource.seedUser(
+        UserModel(
+          currentStreak: 5,
+          longestStreak: 8,
+          totalXp: 200,
+          level: 2,
+          lastReadDate: currentTime.subtract(const Duration(days: 2)),
+          readingProgress: {
+            'Genesis': {1, 2, 3, 4, 5},
+          },
+          streakFreezes: 0,
+        ),
+      );
+
+      final updated = await repository.markChapterAsRead('Exodus', 1);
+
+      expect(updated.currentStreak, 1);
+      expect(updated.longestStreak, 8);
+      expect(updated.totalXp, 200 + AppConstants.xpPerChapter);
+      expect(updated.streakFreezes, 0);
+    });
+
+    test('streak freeze preserves streak and consumes one freeze', () async {
+      dataSource.seedUser(
+        UserModel(
+          currentStreak: 5,
+          longestStreak: 5,
+          totalXp: 200,
+          level: 2,
+          lastReadDate: currentTime.subtract(const Duration(days: 2)),
+          readingProgress: {
+            'Genesis': {1, 2, 3, 4, 5},
+          },
+          streakFreezes: 1,
+        ),
+      );
+
+      final updated = await repository.markChapterAsRead('Exodus', 1);
+
+      expect(updated.currentStreak, 6);
+      expect(
+        updated.totalXp,
+        200 + AppConstants.xpPerChapter + (AppConstants.xpPerDayStreak * 6),
+      );
+      expect(updated.streakFreezes, 0);
+    });
+
+    test('adds bookworm badge after reading 20 chapters in one book', () async {
+      dataSource.seedUser(
+        UserModel(
+          currentStreak: 1,
+          longestStreak: 1,
+          totalXp: 300,
+          level: 3,
+          lastReadDate: currentTime,
+          readingProgress: {
+            'Genesis': {
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+            },
+          },
+        ),
+      );
+
+      final updated = await repository.markChapterAsRead('Genesis', 20);
+
+      expect(updated.badges, contains('bookworm'));
+    });
+
+    test('adds xp_1000 badge when crossing 1000 total XP', () async {
+      dataSource.seedUser(
+        UserModel(
+          currentStreak: 1,
+          longestStreak: 1,
+          totalXp: 995,
+          level: 4,
+          lastReadDate: currentTime,
+          readingProgress: {
+            'Genesis': {1},
+          },
+        ),
+      );
+
+      final updated = await repository.markChapterAsRead('Genesis', 2);
+
+      expect(updated.totalXp, greaterThanOrEqualTo(1000));
+      expect(updated.badges, contains('xp_1000'));
     });
   });
 }
