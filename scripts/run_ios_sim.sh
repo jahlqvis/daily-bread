@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IOS_DIR="$ROOT_DIR/ios"
+APP_PATH="$ROOT_DIR/build/ios/iphonesimulator/Runner.app"
 DERIVED_DATA="$ROOT_DIR/build/flutter-ios"
 APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/Runner.app"
 
@@ -38,6 +39,11 @@ fi
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Runner.app not found at $APP_PATH"
+  exit 1
+fi
+
+if [[ ! -f "$APP_PATH/Frameworks/Flutter.framework/Flutter" ]]; then
+  echo "Flutter.framework missing in app bundle. See /tmp/run_ios_sim_build.log"
   exit 1
 fi
 
