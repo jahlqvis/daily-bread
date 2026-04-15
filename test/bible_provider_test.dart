@@ -9,6 +9,7 @@ class _FakeBibleDataSource extends BibleDataSource {
   final List<String> searchCalls = [];
 
   bool throwOnSearch = false;
+  bool throwOnPreload = false;
 
   final Map<BibleTranslation, List<BiblePassage>> _searchResponses = {
     BibleTranslation.kjv: [
@@ -110,6 +111,9 @@ class _FakeBibleDataSource extends BibleDataSource {
 
   @override
   Future<void> preloadBook(String book, BibleTranslation translation) async {
+    if (throwOnPreload) {
+      throw Exception('preload failure');
+    }
     preloadCalls.add('${translation.id}:$book');
   }
 
@@ -178,6 +182,17 @@ void main() {
       expect(provider.searchResults.first.book, 'Romans');
     });
 
+    test('translation change does not search when query is empty', () async {
+      final dataSource = _FakeBibleDataSource();
+      final provider = BibleProvider(dataSource);
+
+      await provider.selectTranslation(BibleTranslation.asv);
+
+      expect(provider.selectedTranslation, BibleTranslation.asv);
+      expect(dataSource.searchCalls, isEmpty);
+      expect(dataSource.preloadCalls, contains('asv:Genesis'));
+    });
+
     test('search errors surface user-facing error state', () async {
       final dataSource = _FakeBibleDataSource()..throwOnSearch = true;
       final provider = BibleProvider(dataSource);
@@ -187,6 +202,41 @@ void main() {
       expect(provider.searchResults, isEmpty);
       expect(provider.searchError, isNotNull);
       expect(provider.isSearching, isFalse);
+    });
+
+    test('clearSearchResults resets existing search state', () async {
+      final dataSource = _FakeBibleDataSource();
+      final provider = BibleProvider(dataSource);
+
+      await provider.searchVerses('grace');
+
+      expect(provider.lastSearchQuery, 'grace');
+      expect(provider.searchResults, isNotEmpty);
+
+      provider.clearSearchResults();
+
+      expect(provider.lastSearchQuery, isEmpty);
+      expect(provider.searchResults, isEmpty);
+      expect(provider.searchError, isNull);
+      expect(provider.isSearching, isFalse);
+    });
+
+    test('load and retry update loadError state correctly', () async {
+      final dataSource = _FakeBibleDataSource()..throwOnPreload = true;
+      final provider = BibleProvider(dataSource);
+
+      await provider.loadBible();
+
+      expect(provider.loadError, isNotNull);
+      expect(provider.isLoading, isFalse);
+
+      dataSource.throwOnPreload = false;
+      await provider.retryCurrentSelection();
+
+      expect(provider.loadError, isNull);
+      expect(provider.isLoading, isFalse);
+      expect(dataSource.preloadCalls.length, 1);
+      expect(dataSource.preloadCalls.first, 'kjv:Genesis');
     });
 
     test(
