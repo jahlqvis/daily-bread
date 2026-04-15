@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -15,17 +17,46 @@ class VerseSearchScreen extends StatefulWidget {
 }
 
 class _VerseSearchScreenState extends State<VerseSearchScreen> {
+  static const Duration _searchDebounce = Duration(milliseconds: 350);
+  static const int _minSearchLength = 2;
+
   final TextEditingController _queryController = TextEditingController();
   bool _hydratedQuery = false;
+  Timer? _searchDebounceTimer;
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _queryController.dispose();
     super.dispose();
   }
 
   Future<void> _runSearch(BuildContext context) async {
-    await context.read<BibleProvider>().searchVerses(_queryController.text);
+    final trimmed = _queryController.text.trim();
+    if (trimmed.isEmpty || trimmed.length < _minSearchLength) {
+      context.read<BibleProvider>().clearSearchResults();
+      return;
+    }
+
+    await context.read<BibleProvider>().searchVerses(trimmed);
+  }
+
+  void _onQueryChanged(BuildContext context) {
+    setState(() {});
+
+    _searchDebounceTimer?.cancel();
+    final trimmed = _queryController.text.trim();
+    if (trimmed.isEmpty || trimmed.length < _minSearchLength) {
+      context.read<BibleProvider>().clearSearchResults();
+      return;
+    }
+
+    _searchDebounceTimer = Timer(_searchDebounce, () {
+      if (!mounted) {
+        return;
+      }
+      _runSearch(context);
+    });
   }
 
   void _hydrateQuery(BibleProvider bibleProvider) {
@@ -55,7 +86,7 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
                 child: TextField(
                   controller: _queryController,
                   textInputAction: TextInputAction.search,
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) => _onQueryChanged(context),
                   onSubmitted: (_) => _runSearch(context),
                   decoration: InputDecoration(
                     hintText: 'Search verses (e.g. love one another)',
@@ -70,6 +101,7 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
                         if (_queryController.text.trim().isEmpty) {
                           _runSearch(context);
                         } else {
+                          _searchDebounceTimer?.cancel();
                           _queryController.clear();
                           context.read<BibleProvider>().clearSearchResults();
                           setState(() {});
@@ -122,6 +154,8 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
   }
 
   Widget _buildSearchBody(BuildContext context, BibleProvider bibleProvider) {
+    final trimmedQuery = _queryController.text.trim();
+
     if (bibleProvider.searchError != null) {
       return Center(
         child: Padding(
@@ -153,6 +187,12 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
             Text('Searching verses...'),
           ],
         ),
+      );
+    }
+
+    if (trimmedQuery.isNotEmpty && trimmedQuery.length < _minSearchLength) {
+      return Center(
+        child: Text('Type at least $_minSearchLength characters to search.'),
       );
     }
 

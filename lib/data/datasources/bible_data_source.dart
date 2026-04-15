@@ -12,6 +12,8 @@ class BibleDataSource {
   static final Map<BibleTranslation, Map<String, Map<int, List<BiblePassage>>>>
   _bookCache = {};
   static final Map<String, Future<void>> _loadingBooks = {};
+  static final Map<BibleTranslation, List<_SearchEntry>> _searchIndex = {};
+  static final Map<BibleTranslation, Future<void>> _buildingSearchIndex = {};
 
   Future<void> loadBibleData(BibleTranslation translation) async {
     await preloadBook(AppConstants.booksOfTheBible.first, translation);
@@ -138,8 +140,41 @@ class BibleDataSource {
 
     final results = <BiblePassage>[];
 
-    final booksToSearch = books ?? AppConstants.booksOfTheBible;
-    for (final book in booksToSearch) {
+    if (books != null) {
+      return _searchInBooks(
+        books: books,
+        terms: terms,
+        translation: translation,
+        limit: limit,
+      );
+    }
+
+    await _ensureSearchIndex(translation);
+    final entries = _searchIndex[translation] ?? const [];
+
+    for (final entry in entries) {
+      final isMatch = terms.every(entry.normalizedText.contains);
+      if (!isMatch) {
+        continue;
+      }
+
+      results.add(entry.passage);
+      if (results.length >= limit) {
+        break;
+      }
+    }
+
+    return results;
+  }
+
+  Future<List<BiblePassage>> _searchInBooks({
+    required Iterable<String> books,
+    required List<String> terms,
+    required BibleTranslation translation,
+    required int limit,
+  }) async {
+    final results = <BiblePassage>[];
+    for (final book in books) {
       await preloadBook(book, translation);
       final chapters = _bookCache[translation]?[book];
       if (chapters == null || chapters.isEmpty) {
@@ -155,7 +190,6 @@ class BibleDataSource {
           if (!isMatch) {
             continue;
           }
-
           results.add(verse);
           if (results.length >= limit) {
             return results;
@@ -163,8 +197,52 @@ class BibleDataSource {
         }
       }
     }
-
     return results;
+  }
+
+  Future<void> _ensureSearchIndex(BibleTranslation translation) async {
+    if (_searchIndex.containsKey(translation)) {
+      return;
+    }
+
+    final existingLoader = _buildingSearchIndex[translation];
+    if (existingLoader != null) {
+      return existingLoader;
+    }
+
+    final loader = _buildSearchIndex(translation);
+    _buildingSearchIndex[translation] = loader;
+    try {
+      await loader;
+    } finally {
+      _buildingSearchIndex.remove(translation);
+    }
+  }
+
+  Future<void> _buildSearchIndex(BibleTranslation translation) async {
+    final entries = <_SearchEntry>[];
+    for (final book in AppConstants.booksOfTheBible) {
+      await preloadBook(book, translation);
+      final chapters = _bookCache[translation]?[book];
+      if (chapters == null || chapters.isEmpty) {
+        continue;
+      }
+
+      final chapterNumbers = chapters.keys.toList()..sort();
+      for (final chapter in chapterNumbers) {
+        final verses = chapters[chapter] ?? const [];
+        for (final verse in verses) {
+          entries.add(
+            _SearchEntry(
+              passage: verse,
+              normalizedText: verse.text.toLowerCase(),
+            ),
+          );
+        }
+      }
+    }
+
+    _searchIndex[translation] = entries;
   }
 
   List<String> getBooks() {
@@ -178,4 +256,11 @@ class BibleDataSource {
   String _loadingKey(String book, BibleTranslation translation) {
     return '${translation.id}_$book';
   }
+}
+
+class _SearchEntry {
+  final BiblePassage passage;
+  final String normalizedText;
+
+  const _SearchEntry({required this.passage, required this.normalizedText});
 }
