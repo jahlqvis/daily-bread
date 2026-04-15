@@ -8,6 +8,7 @@ on:
 
 env:
   FLUTTER_CHANNEL: stable
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   lint_test_web:
