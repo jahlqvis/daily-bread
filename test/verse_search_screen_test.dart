@@ -115,23 +115,21 @@ void main() {
     List<NavigatorObserver> navigatorObservers = const [],
   }) async {
     final provider = bibleProvider ?? BibleProvider(dataSource);
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final localDataSource = LocalDataSource(prefs);
 
     final providers = <SingleChildWidget>[
       ChangeNotifierProvider<BibleProvider>.value(value: provider),
+      ChangeNotifierProvider(
+        create: (_) => BookmarksProvider(localDataSource)..loadBookmarks(),
+      ),
     ];
 
     if (includeUserProvider) {
-      SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      final localDataSource = LocalDataSource(prefs);
       final repository = UserRepository(localDataSource);
       providers.add(
         ChangeNotifierProvider(create: (_) => UserProvider(repository)),
-      );
-      providers.add(
-        ChangeNotifierProvider(
-          create: (_) => BookmarksProvider(localDataSource)..loadBookmarks(),
-        ),
       );
     }
 

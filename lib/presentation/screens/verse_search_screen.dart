@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/bible_translation.dart';
 import '../../data/models/bible_passage_model.dart';
 import '../providers/bible_provider.dart';
+import '../providers/bookmarks_provider.dart';
 import '../widgets/translation_selector.dart';
 import 'reading_screen.dart';
 
@@ -75,8 +76,8 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
         title: const Text('Verse Search'),
         actions: const [TranslationSelector()],
       ),
-      body: Consumer<BibleProvider>(
-        builder: (context, bibleProvider, _) {
+      body: Consumer2<BibleProvider, BookmarksProvider>(
+        builder: (context, bibleProvider, bookmarksProvider, _) {
           _hydrateQuery(bibleProvider);
 
           return Column(
@@ -145,7 +146,13 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
                 ),
               if (bibleProvider.lastSearchQuery.isNotEmpty)
                 const SizedBox(height: 8),
-              Expanded(child: _buildSearchBody(context, bibleProvider)),
+              Expanded(
+                child: _buildSearchBody(
+                  context,
+                  bibleProvider,
+                  bookmarksProvider,
+                ),
+              ),
             ],
           );
         },
@@ -153,7 +160,11 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
     );
   }
 
-  Widget _buildSearchBody(BuildContext context, BibleProvider bibleProvider) {
+  Widget _buildSearchBody(
+    BuildContext context,
+    BibleProvider bibleProvider,
+    BookmarksProvider bookmarksProvider,
+  ) {
     final trimmedQuery = _queryController.text.trim();
 
     if (bibleProvider.searchError != null) {
@@ -214,6 +225,13 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final result = results[index];
+        final isBookmarked = bookmarksProvider.isBookmarked(
+          result.book,
+          result.chapter,
+          result.verse,
+          bibleProvider.selectedTranslation.id,
+        );
+
         return ListTile(
           leading: CircleAvatar(
             radius: 14,
@@ -229,11 +247,60 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
               Theme.of(context).textTheme.bodyMedium,
             ),
           ),
-          trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: () async {
+                  await _toggleBookmark(
+                    context,
+                    bookmarksProvider: bookmarksProvider,
+                    result: result,
+                    translation: bibleProvider.selectedTranslation,
+                    wasBookmarked: isBookmarked,
+                  );
+                },
+                icon: Icon(
+                  isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+                  color: isBookmarked ? Theme.of(context).primaryColor : null,
+                ),
+                tooltip: isBookmarked ? 'Remove bookmark' : 'Add bookmark',
+              ),
+              const Icon(Icons.arrow_forward_ios, size: 14),
+            ],
+          ),
           onTap: () => _openResult(context, result),
         );
       },
     );
+  }
+
+  Future<void> _toggleBookmark(
+    BuildContext context, {
+    required BookmarksProvider bookmarksProvider,
+    required BiblePassage result,
+    required BibleTranslation translation,
+    required bool wasBookmarked,
+  }) async {
+    await bookmarksProvider.toggleBookmark(
+      book: result.book,
+      chapter: result.chapter,
+      verse: result.verse,
+      translationId: translation.id,
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            wasBookmarked
+                ? 'Removed bookmark for ${result.reference}'
+                : 'Bookmarked ${result.reference}',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   TextSpan _highlightedText(String text, String query, TextStyle? baseStyle) {
