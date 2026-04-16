@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
+import '../models/verse_bookmark_model.dart';
 
 class LocalDataSource {
   static const String _userKey = 'user_data';
   static const String _activePlanIdKey = 'active_plan_id';
   static const String _activePlanStartedAtKey = 'active_plan_started_at';
   static const String _completedPlanRewardsKey = 'completed_plan_reward_ids';
+  static const String _bookmarksKey = 'verse_bookmarks';
   final SharedPreferences _prefs;
 
   LocalDataSource(this._prefs);
@@ -68,5 +70,31 @@ class LocalDataSource {
       _completedPlanRewardsKey,
       planIds.toList(growable: false),
     );
+  }
+
+  List<VerseBookmark> getBookmarks() {
+    final jsonString = _prefs.getString(_bookmarksKey);
+    if (jsonString == null || jsonString.isEmpty) {
+      return const [];
+    }
+
+    final decoded = jsonDecode(jsonString);
+    if (decoded is! List) {
+      return const [];
+    }
+
+    return decoded
+        .whereType<Map<String, dynamic>>()
+        .map(VerseBookmark.fromJson)
+        .toList(growable: false);
+  }
+
+  Future<void> saveBookmarks(List<VerseBookmark> bookmarks) async {
+    final payload = bookmarks.map((bookmark) => bookmark.toJson()).toList();
+    await _prefs.setString(_bookmarksKey, jsonEncode(payload));
+  }
+
+  Future<void> clearBookmarks() async {
+    await _prefs.remove(_bookmarksKey);
   }
 }

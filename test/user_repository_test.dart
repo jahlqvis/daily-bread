@@ -1,6 +1,7 @@
 import 'package:daily_bread/core/constants/app_constants.dart';
 import 'package:daily_bread/data/datasources/local_data_source.dart';
 import 'package:daily_bread/data/models/user_model.dart';
+import 'package:daily_bread/data/models/verse_bookmark_model.dart';
 import 'package:daily_bread/data/repositories/user_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -178,6 +179,7 @@ class _InMemoryLocalDataSource implements LocalDataSource {
   String? _activePlanId;
   DateTime? _activePlanStartedAt;
   Set<String> _completedPlanRewardIds = <String>{};
+  List<VerseBookmark> _bookmarks = <VerseBookmark>[];
 
   void seedUser(UserModel user) {
     _user = user;
@@ -236,5 +238,20 @@ class _InMemoryLocalDataSource implements LocalDataSource {
   @override
   Future<void> saveCompletedPlanRewardIds(Set<String> planIds) async {
     _completedPlanRewardIds = planIds;
+  }
+
+  @override
+  Future<void> clearBookmarks() async {
+    _bookmarks = <VerseBookmark>[];
+  }
+
+  @override
+  List<VerseBookmark> getBookmarks() {
+    return _bookmarks;
+  }
+
+  @override
+  Future<void> saveBookmarks(List<VerseBookmark> bookmarks) async {
+    _bookmarks = bookmarks;
   }
 }
