@@ -8,6 +8,7 @@ import 'data/repositories/user_repository.dart';
 import 'presentation/providers/user_provider.dart';
 import 'presentation/providers/bible_provider.dart';
 import 'presentation/providers/reading_plan_provider.dart';
+import 'presentation/providers/bookmarks_provider.dart';
 import 'presentation/screens/home_screen.dart';
 
 void main() async {
@@ -29,6 +30,9 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (_) => ReadingPlanProvider(localDataSource)..loadPlanState(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => BookmarksProvider(localDataSource)..loadBookmarks(),
         ),
       ],
       child: const DailyBreadApp(),
