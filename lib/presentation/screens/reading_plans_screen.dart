@@ -24,11 +24,14 @@ class ReadingPlansScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final plan = planProvider.plans[index];
               final isActive = planProvider.activePlanId == plan.id;
+              final status = planProvider.planStatusFor(
+                userProvider.user,
+                plan,
+              );
               final completed = planProvider.completedCountForPlan(
                 userProvider.user,
                 plan,
               );
-              final isCompleted = completed >= plan.totalDays;
               final hasClaimedReward = planProvider.hasClaimedCompletionReward(
                 plan.id,
               );
@@ -73,7 +76,8 @@ class ReadingPlansScreen extends StatelessWidget {
                                 ),
                               ),
                             ),
-                          if (!isActive && isCompleted) ...[
+                          if (!isActive &&
+                              status == ReadingPlanStatus.completed) ...[
                             const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -86,6 +90,27 @@ class ReadingPlansScreen extends StatelessWidget {
                               ),
                               child: const Text(
                                 'Completed',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (!isActive &&
+                              status == ReadingPlanStatus.paused) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Paused',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
@@ -167,7 +192,13 @@ class ReadingPlansScreen extends StatelessWidget {
                                 }
                               },
                               child: Text(
-                                isActive ? 'Continue Plan' : 'Start Plan',
+                                isActive
+                                    ? 'Continue Plan'
+                                    : status == ReadingPlanStatus.paused
+                                    ? 'Resume Plan'
+                                    : status == ReadingPlanStatus.completed
+                                    ? 'Restart Plan'
+                                    : 'Start Plan',
                               ),
                             ),
                           ),

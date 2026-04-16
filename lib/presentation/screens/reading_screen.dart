@@ -297,6 +297,10 @@ class ReadingScreen extends StatelessWidget {
 
               final updatedUser = userProvider.user;
               final nextPlanChapter = planProvider.nextChapter(updatedUser);
+              final resumePlanChapter = planProvider.resumeReference(
+                updatedUser,
+                DateTime.now(),
+              );
               final completedPlan =
                   isInPlan && planProvider.isCompleted(updatedUser);
               final earnedCompletionReward = completedPlan
@@ -313,8 +317,10 @@ class ReadingScreen extends StatelessWidget {
                           ? 'Amazing! You completed your active reading plan and unlocked a completion reward.'
                           : completedPlan
                           ? 'You have already completed this plan. Great consistency!'
+                          : isInPlan && resumePlanChapter != null
+                          ? 'Chapter marked as read! Next in your plan: ${resumePlanChapter.label}.'
                           : isInPlan && nextPlanChapter != null
-                          ? 'Chapter marked as read! Next in your plan: ${nextPlanChapter.label}.'
+                          ? 'Chapter marked as read! Continue with ${nextPlanChapter.label}.'
                           : 'Chapter marked as read! Keep up the great work!',
                     ),
                     backgroundColor: AppTheme.primaryColor,

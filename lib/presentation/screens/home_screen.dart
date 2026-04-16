@@ -145,10 +145,31 @@ class HomeScreen extends StatelessWidget {
 
         final completed = planProvider.completedCount(userProvider.user);
         final progress = planProvider.progress(userProvider.user);
-        final isCompleted = planProvider.isCompleted(userProvider.user);
+        final status = planProvider.activePlanStatus(userProvider.user);
+        final isCompleted = status == ReadingPlanStatus.activeCompleted;
         final hasClaimedReward = planProvider.hasClaimedCompletionReward(
           activePlan.id,
         );
+        final resumeReference = planProvider.resumeReference(
+          userProvider.user,
+          DateTime.now(),
+        );
+
+        final statusLabel = switch (status) {
+          ReadingPlanStatus.activeInProgress => 'Active',
+          ReadingPlanStatus.activeCompleted => 'Completed',
+          ReadingPlanStatus.paused => 'Paused',
+          ReadingPlanStatus.completed => 'Completed',
+          ReadingPlanStatus.inactive => 'Not Active',
+        };
+
+        final statusColor = switch (status) {
+          ReadingPlanStatus.activeInProgress => AppTheme.primaryColor,
+          ReadingPlanStatus.activeCompleted => Colors.green,
+          ReadingPlanStatus.paused => Colors.orange,
+          ReadingPlanStatus.completed => Colors.green,
+          ReadingPlanStatus.inactive => Colors.grey,
+        };
 
         return Card(
           child: Padding(
@@ -182,17 +203,16 @@ class HomeScreen extends StatelessWidget {
                   activePlan.title,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-                if (isCompleted)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4),
-                    child: Text(
-                      'Completed',
-                      style: TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.w700,
-                      ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
+                ),
                 if (isCompleted && hasClaimedReward)
                   const Padding(
                     padding: EdgeInsets.only(top: 4),
@@ -219,7 +239,36 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (nextChapter != null)
+                if (status == ReadingPlanStatus.activeCompleted)
+                  ElevatedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ReadingPlansScreen(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.flag),
+                    label: const Text('Start New Plan'),
+                  )
+                else if (resumeReference != null)
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final bibleProvider = context.read<BibleProvider>();
+                      await bibleProvider.selectBook(resumeReference.book);
+                      bibleProvider.selectChapter(resumeReference.chapter);
+                      if (context.mounted) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ReadingScreen(),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.play_circle_outline),
+                    label: Text('Continue Plan (${resumeReference.label})'),
+                  )
+                else if (nextChapter != null)
                   ElevatedButton.icon(
                     onPressed: () async {
                       final bibleProvider = context.read<BibleProvider>();

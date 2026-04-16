@@ -20,7 +20,84 @@ void main() {
       await provider.activatePlan('wisdom_14');
       expect(provider.activePlanId, 'wisdom_14');
       expect(dataSource.getActivePlanId(), 'wisdom_14');
+      expect(dataSource.getActivePlanStartedAt(), isNotNull);
     });
+
+    test('status resolves active, paused, completed, and inactive', () async {
+      SharedPreferences.setMockInitialValues({'active_plan_id': 'john_21'});
+      final prefs = await SharedPreferences.getInstance();
+      final provider = ReadingPlanProvider(LocalDataSource(prefs));
+      await provider.loadPlanState();
+
+      final noProgressUser = UserModel();
+      final activePlan = provider.activePlan!;
+      final pausedPlan = provider.plans.firstWhere(
+        (plan) => plan.id == 'wisdom_14',
+      );
+
+      expect(
+        provider.planStatusFor(noProgressUser, activePlan),
+        ReadingPlanStatus.activeInProgress,
+      );
+      expect(
+        provider.planStatusFor(noProgressUser, pausedPlan),
+        ReadingPlanStatus.inactive,
+      );
+
+      final pausedUser = UserModel(
+        readingProgress: {
+          'Psalms': {1},
+        },
+      );
+      expect(
+        provider.planStatusFor(pausedUser, pausedPlan),
+        ReadingPlanStatus.paused,
+      );
+
+      final completedUser = UserModel(
+        readingProgress: {
+          'Psalms': {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+          'Proverbs': {1, 2, 3, 4},
+        },
+      );
+      expect(
+        provider.planStatusFor(completedUser, pausedPlan),
+        ReadingPlanStatus.completed,
+      );
+    });
+
+    test(
+      'resumeReference prioritizes today chapter then falls back to next unread',
+      () async {
+        SharedPreferences.setMockInitialValues({'active_plan_id': 'john_21'});
+        final prefs = await SharedPreferences.getInstance();
+        final provider = ReadingPlanProvider(LocalDataSource(prefs));
+        await provider.loadPlanState();
+
+        final startedAt = DateTime(2026, 4, 10);
+        await provider.activatePlan('john_21', startedAt: startedAt);
+
+        final now = DateTime(2026, 4, 12);
+        final userUnreadToday = UserModel(
+          readingProgress: {
+            'John': {1, 2},
+          },
+        );
+        final todaysReference = provider.resumeReference(userUnreadToday, now);
+        expect(todaysReference, isNotNull);
+        expect(todaysReference!.book, 'John');
+        expect(todaysReference.chapter, 3);
+
+        final userReadToday = UserModel(
+          readingProgress: {
+            'John': {1, 2, 3},
+          },
+        );
+        final fallbackReference = provider.resumeReference(userReadToday, now);
+        expect(fallbackReference, isNotNull);
+        expect(fallbackReference!.chapter, 4);
+      },
+    );
 
     test('returns next unread chapter and progress', () async {
       SharedPreferences.setMockInitialValues({'active_plan_id': 'john_21'});
