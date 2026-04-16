@@ -101,4 +101,78 @@ void main() {
       expect(results, isEmpty);
     });
   });
+
+  group('BibleDataSource search index behavior', () {
+    setUp(() {
+      BibleDataSource.clearCachesForTesting();
+      BibleDataSource.setSearchIndexBooksForTesting(const ['Genesis', 'John']);
+    });
+
+    tearDown(() {
+      BibleDataSource.clearCachesForTesting();
+    });
+
+    test(
+      'builds index once and reuses it for repeated translation queries',
+      () async {
+        final dataSource = BibleDataSource();
+
+        final first = await dataSource.searchVerses(
+          'in the beginning',
+          BibleTranslation.kjv,
+        );
+        final firstBuildCount = BibleDataSource.searchIndexBuildCountForTesting(
+          BibleTranslation.kjv,
+        );
+
+        final second = await dataSource.searchVerses(
+          'the word',
+          BibleTranslation.kjv,
+        );
+        final secondBuildCount =
+            BibleDataSource.searchIndexBuildCountForTesting(
+              BibleTranslation.kjv,
+            );
+
+        expect(first, isNotEmpty);
+        expect(second, isNotEmpty);
+        expect(firstBuildCount, 1);
+        expect(secondBuildCount, 1);
+        expect(
+          BibleDataSource.searchIndexSizeForTesting(BibleTranslation.kjv),
+          greaterThan(0),
+        );
+      },
+    );
+
+    test('maintains separate search indexes per translation', () async {
+      final dataSource = BibleDataSource();
+
+      await dataSource.searchVerses('in the beginning', BibleTranslation.kjv);
+      await dataSource.searchVerses('in the beginning', BibleTranslation.web);
+
+      expect(
+        BibleDataSource.searchIndexBuildCountForTesting(BibleTranslation.kjv),
+        1,
+      );
+      expect(
+        BibleDataSource.searchIndexBuildCountForTesting(BibleTranslation.web),
+        1,
+      );
+      expect(
+        BibleDataSource.searchIndexSizeForTesting(BibleTranslation.kjv),
+        greaterThan(0),
+      );
+      expect(
+        BibleDataSource.searchIndexSizeForTesting(BibleTranslation.web),
+        greaterThan(0),
+      );
+
+      await dataSource.searchVerses('god', BibleTranslation.web);
+      expect(
+        BibleDataSource.searchIndexBuildCountForTesting(BibleTranslation.web),
+        1,
+      );
+    });
+  });
 }

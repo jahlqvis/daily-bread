@@ -14,6 +14,8 @@ class BibleDataSource {
   static final Map<String, Future<void>> _loadingBooks = {};
   static final Map<BibleTranslation, List<_SearchEntry>> _searchIndex = {};
   static final Map<BibleTranslation, Future<void>> _buildingSearchIndex = {};
+  static final Map<BibleTranslation, int> _searchIndexBuildCounts = {};
+  static List<String>? _searchIndexBooksOverride;
 
   Future<void> loadBibleData(BibleTranslation translation) async {
     await preloadBook(AppConstants.booksOfTheBible.first, translation);
@@ -221,7 +223,9 @@ class BibleDataSource {
 
   Future<void> _buildSearchIndex(BibleTranslation translation) async {
     final entries = <_SearchEntry>[];
-    for (final book in AppConstants.booksOfTheBible) {
+    final booksForIndex =
+        _searchIndexBooksOverride ?? AppConstants.booksOfTheBible;
+    for (final book in booksForIndex) {
       await preloadBook(book, translation);
       final chapters = _bookCache[translation]?[book];
       if (chapters == null || chapters.isEmpty) {
@@ -243,6 +247,33 @@ class BibleDataSource {
     }
 
     _searchIndex[translation] = entries;
+    _searchIndexBuildCounts[translation] =
+        (_searchIndexBuildCounts[translation] ?? 0) + 1;
+  }
+
+  @visibleForTesting
+  static void clearCachesForTesting() {
+    _bookCache.clear();
+    _loadingBooks.clear();
+    _searchIndex.clear();
+    _buildingSearchIndex.clear();
+    _searchIndexBuildCounts.clear();
+    _searchIndexBooksOverride = null;
+  }
+
+  @visibleForTesting
+  static void setSearchIndexBooksForTesting(Iterable<String>? books) {
+    _searchIndexBooksOverride = books?.toList(growable: false);
+  }
+
+  @visibleForTesting
+  static int searchIndexBuildCountForTesting(BibleTranslation translation) {
+    return _searchIndexBuildCounts[translation] ?? 0;
+  }
+
+  @visibleForTesting
+  static int searchIndexSizeForTesting(BibleTranslation translation) {
+    return _searchIndex[translation]?.length ?? 0;
   }
 
   List<String> getBooks() {
