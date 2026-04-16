@@ -8,6 +8,7 @@ import '../../data/models/bible_passage_model.dart';
 import '../widgets/translation_selector.dart';
 import '../providers/reading_plan_provider.dart';
 import 'verse_search_screen.dart';
+import 'reading_plans_screen.dart';
 
 class ReadingScreen extends StatelessWidget {
   const ReadingScreen({super.key});
@@ -298,18 +299,39 @@ class ReadingScreen extends StatelessWidget {
               final nextPlanChapter = planProvider.nextChapter(updatedUser);
               final completedPlan =
                   isInPlan && planProvider.isCompleted(updatedUser);
+              final earnedCompletionReward = completedPlan
+                  ? await planProvider.claimCompletionRewardIfNeeded(
+                      updatedUser,
+                    )
+                  : false;
 
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      completedPlan
-                          ? 'Amazing! You completed your active reading plan.'
+                      earnedCompletionReward
+                          ? 'Amazing! You completed your active reading plan and unlocked a completion reward.'
+                          : completedPlan
+                          ? 'You have already completed this plan. Great consistency!'
                           : isInPlan && nextPlanChapter != null
                           ? 'Chapter marked as read! Next in your plan: ${nextPlanChapter.label}.'
                           : 'Chapter marked as read! Keep up the great work!',
                     ),
                     backgroundColor: AppTheme.primaryColor,
+                    action: earnedCompletionReward
+                        ? SnackBarAction(
+                            label: 'View Plans',
+                            textColor: Colors.white,
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const ReadingPlansScreen(),
+                                ),
+                              );
+                            },
+                          )
+                        : null,
                   ),
                 );
               }

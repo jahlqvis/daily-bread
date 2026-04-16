@@ -9,12 +9,17 @@ class ReadingPlanProvider extends ChangeNotifier {
   final LocalDataSource _localDataSource;
   bool _isLoading = true;
   String? _activePlanId;
+  Set<String> _completedPlanRewardIds = <String>{};
 
   ReadingPlanProvider(this._localDataSource);
 
   bool get isLoading => _isLoading;
   List<ReadingPlan> get plans => ReadingPlans.all;
   String? get activePlanId => _activePlanId;
+
+  bool hasClaimedCompletionReward(String planId) {
+    return _completedPlanRewardIds.contains(planId);
+  }
 
   bool hasPlan(String planId) {
     return plans.any((plan) => plan.id == planId);
@@ -43,6 +48,7 @@ class ReadingPlanProvider extends ChangeNotifier {
     } else {
       _activePlanId = persistedPlanId;
     }
+    _completedPlanRewardIds = _localDataSource.getCompletedPlanRewardIds();
     _isLoading = false;
     notifyListeners();
   }
@@ -105,6 +111,21 @@ class ReadingPlanProvider extends ChangeNotifier {
       return false;
     }
     return completedCount(user) >= plan.totalDays;
+  }
+
+  Future<bool> claimCompletionRewardIfNeeded(UserModel user) async {
+    final plan = activePlan;
+    if (plan == null || !isCompleted(user)) {
+      return false;
+    }
+    if (_completedPlanRewardIds.contains(plan.id)) {
+      return false;
+    }
+
+    _completedPlanRewardIds = {..._completedPlanRewardIds, plan.id};
+    await _localDataSource.saveCompletedPlanRewardIds(_completedPlanRewardIds);
+    notifyListeners();
+    return true;
   }
 
   ReadingReference? nextChapter(UserModel user) {

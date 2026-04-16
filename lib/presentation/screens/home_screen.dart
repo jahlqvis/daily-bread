@@ -146,6 +146,9 @@ class HomeScreen extends StatelessWidget {
         final completed = planProvider.completedCount(userProvider.user);
         final progress = planProvider.progress(userProvider.user);
         final isCompleted = planProvider.isCompleted(userProvider.user);
+        final hasClaimedReward = planProvider.hasClaimedCompletionReward(
+          activePlan.id,
+        );
 
         return Card(
           child: Padding(
@@ -186,6 +189,17 @@ class HomeScreen extends StatelessWidget {
                       'Completed',
                       style: TextStyle(
                         color: Colors.green,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                if (isCompleted && hasClaimedReward)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Reward claimed: Plan Finisher',
+                      style: TextStyle(
+                        color: Colors.amber,
                         fontWeight: FontWeight.w700,
                       ),
                     ),

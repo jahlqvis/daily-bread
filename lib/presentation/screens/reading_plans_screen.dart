@@ -29,6 +29,9 @@ class ReadingPlansScreen extends StatelessWidget {
                 plan,
               );
               final isCompleted = completed >= plan.totalDays;
+              final hasClaimedReward = planProvider.hasClaimedCompletionReward(
+                plan.id,
+              );
 
               final progress = plan.totalDays == 0
                   ? 0.0
@@ -83,6 +86,26 @@ class ReadingPlansScreen extends StatelessWidget {
                               ),
                               child: const Text(
                                 'Completed',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (hasClaimedReward) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.amber[700],
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Reward Claimed',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,

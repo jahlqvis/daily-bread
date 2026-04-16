@@ -5,6 +5,7 @@ import '../models/user_model.dart';
 class LocalDataSource {
   static const String _userKey = 'user_data';
   static const String _activePlanIdKey = 'active_plan_id';
+  static const String _completedPlanRewardsKey = 'completed_plan_reward_ids';
   final SharedPreferences _prefs;
 
   LocalDataSource(this._prefs);
@@ -35,5 +36,20 @@ class LocalDataSource {
 
   Future<void> clearActivePlanId() async {
     await _prefs.remove(_activePlanIdKey);
+  }
+
+  Set<String> getCompletedPlanRewardIds() {
+    final ids = _prefs.getStringList(_completedPlanRewardsKey);
+    if (ids == null) {
+      return <String>{};
+    }
+    return ids.toSet();
+  }
+
+  Future<void> saveCompletedPlanRewardIds(Set<String> planIds) async {
+    await _prefs.setStringList(
+      _completedPlanRewardsKey,
+      planIds.toList(growable: false),
+    );
   }
 }

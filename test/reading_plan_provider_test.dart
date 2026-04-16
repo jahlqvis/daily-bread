@@ -87,5 +87,71 @@ void main() {
         throwsA(isA<ArgumentError>()),
       );
     });
+
+    test(
+      'claims completion reward only once per completed active plan',
+      () async {
+        SharedPreferences.setMockInitialValues({'active_plan_id': 'wisdom_14'});
+        final prefs = await SharedPreferences.getInstance();
+        final dataSource = LocalDataSource(prefs);
+        final provider = ReadingPlanProvider(dataSource);
+        await provider.loadPlanState();
+
+        final completedUser = UserModel(
+          readingProgress: {
+            'Psalms': {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+            'Proverbs': {1, 2, 3, 4},
+          },
+        );
+
+        final firstClaim = await provider.claimCompletionRewardIfNeeded(
+          completedUser,
+        );
+        final secondClaim = await provider.claimCompletionRewardIfNeeded(
+          completedUser,
+        );
+
+        expect(firstClaim, isTrue);
+        expect(secondClaim, isFalse);
+        expect(provider.hasClaimedCompletionReward('wisdom_14'), isTrue);
+        expect(dataSource.getCompletedPlanRewardIds(), contains('wisdom_14'));
+      },
+    );
+
+    test(
+      'loads previously claimed completion rewards from local storage',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'active_plan_id': 'john_21',
+          'completed_plan_reward_ids': ['john_21'],
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final provider = ReadingPlanProvider(LocalDataSource(prefs));
+
+        await provider.loadPlanState();
+
+        expect(provider.hasClaimedCompletionReward('john_21'), isTrue);
+      },
+    );
+
+    test('does not claim completion reward when plan is incomplete', () async {
+      SharedPreferences.setMockInitialValues({'active_plan_id': 'john_21'});
+      final prefs = await SharedPreferences.getInstance();
+      final provider = ReadingPlanProvider(LocalDataSource(prefs));
+      await provider.loadPlanState();
+
+      final incompleteUser = UserModel(
+        readingProgress: {
+          'John': {1, 2, 3},
+        },
+      );
+
+      final claimed = await provider.claimCompletionRewardIfNeeded(
+        incompleteUser,
+      );
+
+      expect(claimed, isFalse);
+      expect(provider.hasClaimedCompletionReward('john_21'), isFalse);
+    });
   });
 }
