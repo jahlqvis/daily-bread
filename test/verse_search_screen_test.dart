@@ -4,6 +4,7 @@ import 'package:daily_bread/data/datasources/local_data_source.dart';
 import 'package:daily_bread/data/models/bible_passage_model.dart';
 import 'package:daily_bread/data/repositories/user_repository.dart';
 import 'package:daily_bread/presentation/providers/bible_provider.dart';
+import 'package:daily_bread/presentation/providers/bookmarks_provider.dart';
 import 'package:daily_bread/presentation/providers/user_provider.dart';
 import 'package:daily_bread/presentation/screens/verse_search_screen.dart';
 import 'package:flutter/material.dart';
@@ -122,9 +123,15 @@ void main() {
     if (includeUserProvider) {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
-      final repository = UserRepository(LocalDataSource(prefs));
+      final localDataSource = LocalDataSource(prefs);
+      final repository = UserRepository(localDataSource);
       providers.add(
         ChangeNotifierProvider(create: (_) => UserProvider(repository)),
+      );
+      providers.add(
+        ChangeNotifierProvider(
+          create: (_) => BookmarksProvider(localDataSource)..loadBookmarks(),
+        ),
       );
     }
 

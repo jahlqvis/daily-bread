@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/bible_provider.dart';
+import '../providers/bookmarks_provider.dart';
 import '../providers/user_provider.dart';
 import '../../core/constants/bible_translation.dart';
 import '../../core/theme/app_theme.dart';
@@ -35,53 +36,73 @@ class ReadingScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Consumer2<BibleProvider, UserProvider>(
-        builder: (context, bibleProvider, userProvider, child) {
-          if (bibleProvider.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Consumer3<BibleProvider, UserProvider, BookmarksProvider>(
+        builder:
+            (context, bibleProvider, userProvider, bookmarksProvider, child) {
+              if (bibleProvider.isLoading) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (bibleProvider.loadError != null) {
-            return _buildLoadError(context, bibleProvider);
-          }
+              if (bibleProvider.loadError != null) {
+                return _buildLoadError(context, bibleProvider);
+              }
 
-          final chapter = bibleProvider.getCurrentChapter();
-          if (chapter == null) {
-            return _buildNoContent(context, bibleProvider);
-          }
+              final chapter = bibleProvider.getCurrentChapter();
+              if (chapter == null) {
+                return _buildNoContent(context, bibleProvider);
+              }
 
-          final isRead =
-              userProvider.user.readingProgress[chapter.book]?.contains(
-                chapter.chapter,
-              ) ??
-              false;
+              final isRead =
+                  userProvider.user.readingProgress[chapter.book]?.contains(
+                    chapter.chapter,
+                  ) ??
+                  false;
 
-          return Column(
-            children: [
-              _buildChapterHeader(
-                chapter,
-                isRead,
-                bibleProvider.selectedTranslation.shortLabel,
-                bibleProvider.highlightedVerse,
-              ),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: chapter.verses.length,
-                  itemBuilder: (context, index) {
-                    final passage = chapter.verses[index];
-                    return _buildVerse(
-                      passage,
-                      passage.verse,
-                      bibleProvider.highlightedVerse == passage.verse,
-                    );
-                  },
-                ),
-              ),
-              if (!isRead) _buildMarkAsReadButton(context, chapter),
-            ],
-          );
-        },
+              return Column(
+                children: [
+                  _buildChapterHeader(
+                    chapter,
+                    isRead,
+                    bibleProvider.selectedTranslation.shortLabel,
+                    bibleProvider.highlightedVerse,
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: chapter.verses.length,
+                      itemBuilder: (context, index) {
+                        final passage = chapter.verses[index];
+                        final isBookmarked = bookmarksProvider.isBookmarked(
+                          passage.book,
+                          passage.chapter,
+                          passage.verse,
+                          bibleProvider.selectedTranslation.id,
+                        );
+
+                        return _buildVerse(
+                          context: context,
+                          passage: passage,
+                          displayNumber: passage.verse,
+                          isHighlighted:
+                              bibleProvider.highlightedVerse == passage.verse,
+                          isBookmarked: isBookmarked,
+                          onToggleBookmark: () async {
+                            await _toggleBookmark(
+                              context,
+                              bookmarksProvider: bookmarksProvider,
+                              passage: passage,
+                              translation: bibleProvider.selectedTranslation,
+                              wasBookmarked: isBookmarked,
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  if (!isRead) _buildMarkAsReadButton(context, chapter),
+                ],
+              );
+            },
       ),
     );
   }
@@ -211,11 +232,14 @@ class ReadingScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildVerse(
-    BiblePassage passage,
-    int displayNumber,
-    bool isHighlighted,
-  ) {
+  Widget _buildVerse({
+    required BuildContext context,
+    required BiblePassage passage,
+    required int displayNumber,
+    required bool isHighlighted,
+    required bool isBookmarked,
+    required VoidCallback onToggleBookmark,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: AnimatedContainer(
@@ -260,10 +284,46 @@ class ReadingScreen extends StatelessWidget {
                 style: const TextStyle(fontSize: 16, height: 1.6),
               ),
             ),
+            IconButton(
+              onPressed: onToggleBookmark,
+              icon: Icon(
+                isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+                color: isBookmarked ? AppTheme.primaryColor : Colors.grey[600],
+              ),
+              tooltip: isBookmarked ? 'Remove bookmark' : 'Add bookmark',
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _toggleBookmark(
+    BuildContext context, {
+    required BookmarksProvider bookmarksProvider,
+    required BiblePassage passage,
+    required BibleTranslation translation,
+    required bool wasBookmarked,
+  }) async {
+    await bookmarksProvider.toggleBookmark(
+      book: passage.book,
+      chapter: passage.chapter,
+      verse: passage.verse,
+      translationId: translation.id,
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            wasBookmarked
+                ? 'Removed bookmark for ${passage.reference}'
+                : 'Bookmarked ${passage.reference}',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Widget _buildMarkAsReadButton(BuildContext context, BibleChapter chapter) {
