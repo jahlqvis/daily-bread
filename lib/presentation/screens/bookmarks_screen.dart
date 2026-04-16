@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/bible_translation.dart';
@@ -22,12 +23,32 @@ class BookmarksScreen extends StatelessWidget {
 
           final bookmarks = bookmarksProvider.bookmarks;
           if (bookmarks.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'No bookmarks yet. Save your favorite verses while reading.',
-                  textAlign: TextAlign.center,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.bookmarks_outlined, size: 56),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'No bookmarks yet. Save your favorite verses while reading.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ReadingScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.menu_book),
+                      label: const Text('Start Reading'),
+                    ),
+                  ],
                 ),
               ),
             );
@@ -43,37 +64,94 @@ class BookmarksScreen extends StatelessWidget {
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_translationLabel(bookmark.translationId)),
+                    const SizedBox(height: 2),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _translationLabel(bookmark.translationId),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _createdLabel(bookmark.createdAt),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
                     if (bookmark.note != null &&
-                        bookmark.note!.trim().isNotEmpty)
+                        bookmark.note!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
                       Text(
                         bookmark.note!,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontStyle: FontStyle.italic),
                       ),
+                    ],
                   ],
                 ),
-                trailing: IconButton(
-                  onPressed: () async {
-                    await bookmarksProvider.removeBookmark(
-                      bookmark.book,
-                      bookmark.chapter,
-                      bookmark.verse,
-                      bookmark.translationId,
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Removed ${bookmark.reference} bookmark',
-                          ),
-                          duration: const Duration(seconds: 2),
-                        ),
+                trailing: PopupMenuButton<String>(
+                  onSelected: (value) async {
+                    if (value == 'edit_note') {
+                      await _showEditNoteDialog(
+                        context,
+                        bookmarksProvider,
+                        bookmark,
                       );
+                      return;
+                    }
+
+                    if (value == 'remove') {
+                      await bookmarksProvider.removeBookmark(
+                        bookmark.book,
+                        bookmark.chapter,
+                        bookmark.verse,
+                        bookmark.translationId,
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Removed ${bookmark.reference} bookmark',
+                            ),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
                     }
                   },
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Remove bookmark',
+                  itemBuilder: (context) => [
+                    PopupMenuItem<String>(
+                      value: 'edit_note',
+                      child: Text(
+                        bookmark.note == null || bookmark.note!.trim().isEmpty
+                            ? 'Add note'
+                            : 'Edit note',
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'remove',
+                      child: Text('Remove bookmark'),
+                    ),
+                  ],
                 ),
                 onTap: () => _openBookmark(context, bookmark),
               );
@@ -108,6 +186,71 @@ class BookmarksScreen extends StatelessWidget {
   String _translationLabel(String translationId) {
     return _translationFromId(translationId)?.shortLabel ??
         translationId.toUpperCase();
+  }
+
+  String _createdLabel(DateTime dateTime) {
+    return DateFormat('MMM d, y').format(dateTime);
+  }
+
+  Future<void> _showEditNoteDialog(
+    BuildContext context,
+    BookmarksProvider bookmarksProvider,
+    VerseBookmark bookmark,
+  ) async {
+    final controller = TextEditingController(text: bookmark.note ?? '');
+
+    final updatedNote = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('Note for ${bookmark.reference}'),
+          content: TextField(
+            controller: controller,
+            maxLines: 4,
+            minLines: 2,
+            decoration: const InputDecoration(
+              hintText: 'Write your note...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, ''),
+              child: const Text('Clear'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (updatedNote == null) {
+      return;
+    }
+
+    await bookmarksProvider.updateNote(
+      bookmark.book,
+      bookmark.chapter,
+      bookmark.verse,
+      bookmark.translationId,
+      updatedNote,
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bookmark note updated'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   BibleTranslation? _translationFromId(String id) {
