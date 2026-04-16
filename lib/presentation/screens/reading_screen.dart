@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../data/models/bible_passage_model.dart';
 import '../widgets/translation_selector.dart';
 import '../providers/reading_plan_provider.dart';
+import 'bookmarks_screen.dart';
 import 'verse_search_screen.dart';
 import 'reading_plans_screen.dart';
 
@@ -27,6 +28,13 @@ class ReadingScreen extends StatelessWidget {
         ),
         actions: [
           const TranslationSelector(),
+          IconButton(
+            icon: const Icon(Icons.bookmarks_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BookmarksScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () => Navigator.push(

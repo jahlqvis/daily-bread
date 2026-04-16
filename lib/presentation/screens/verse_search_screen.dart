@@ -8,6 +8,7 @@ import '../../data/models/bible_passage_model.dart';
 import '../providers/bible_provider.dart';
 import '../providers/bookmarks_provider.dart';
 import '../widgets/translation_selector.dart';
+import 'bookmarks_screen.dart';
 import 'reading_screen.dart';
 
 class VerseSearchScreen extends StatefulWidget {
@@ -74,7 +75,16 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Verse Search'),
-        actions: const [TranslationSelector()],
+        actions: [
+          const TranslationSelector(),
+          IconButton(
+            icon: const Icon(Icons.bookmarks_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BookmarksScreen()),
+            ),
+          ),
+        ],
       ),
       body: Consumer2<BibleProvider, BookmarksProvider>(
         builder: (context, bibleProvider, bookmarksProvider, _) {

@@ -13,6 +13,7 @@ import 'badges_screen.dart';
 import 'book_selection_screen.dart';
 import 'verse_search_screen.dart';
 import 'reading_plans_screen.dart';
+import 'bookmarks_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -29,6 +30,13 @@ class HomeScreen extends StatelessWidget {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const VerseSearchScreen()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.bookmarks_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BookmarksScreen()),
             ),
           ),
           IconButton(
