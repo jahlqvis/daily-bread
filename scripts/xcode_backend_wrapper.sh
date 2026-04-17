@@ -2,11 +2,17 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export PATH="$SCRIPT_DIR:$PATH"
+
 BACKEND_SCRIPT="${FLUTTER_ROOT}/packages/flutter_tools/bin/xcode_backend.sh"
 
-if [[ "${PLATFORM_NAME:-}" == *simulator* ]]; then
+simulator_context="${PLATFORM_NAME:-}${EFFECTIVE_PLATFORM_NAME:-}${SDKROOT:-}"
+if [[ "${simulator_context}" == *simulator* ]]; then
   export CODE_SIGNING_REQUIRED=NO
+  export CODE_SIGNING_ALLOWED=NO
   export EXPANDED_CODE_SIGN_IDENTITY=""
+  export EXPANDED_CODE_SIGN_IDENTITY_NAME=""
 fi
 
 clean_xattrs() {
@@ -30,18 +36,19 @@ max_attempts=2
 while [ "${attempt}" -le "${max_attempts}" ]; do
   attempt_log="$(mktemp)"
   set +e
-  /bin/sh "${BACKEND_SCRIPT}" "$@" >"${attempt_log}" 2>&1
+  if [[ "${simulator_context}" == *simulator* ]]; then
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGNING_ALLOWED=NO \
+    EXPANDED_CODE_SIGN_IDENTITY="" \
+    EXPANDED_CODE_SIGN_IDENTITY_NAME="" \
+      /bin/sh "${BACKEND_SCRIPT}" "$@" >"${attempt_log}" 2>&1
+  else
+    /bin/sh "${BACKEND_SCRIPT}" "$@" >"${attempt_log}" 2>&1
+  fi
   status=$?
   set -e
 
   cat "${attempt_log}"
-
-  if [ "${status}" -ne 0 ] && [[ "${PLATFORM_NAME:-}" == *simulator* ]]; then
-    if /usr/bin/grep -q "resource fork, Finder information, or similar detritus not allowed" "${attempt_log}"; then
-      echo "Ignoring simulator codesign detritus error from xcode_backend.sh"
-      status=0
-    fi
-  fi
 
   rm -f "${attempt_log}"
 

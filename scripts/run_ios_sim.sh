@@ -3,9 +3,38 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IOS_DIR="$ROOT_DIR/ios"
-APP_PATH="$ROOT_DIR/build/ios/iphonesimulator/Runner.app"
-DERIVED_DATA="$ROOT_DIR/build/flutter-ios"
+STAGE_DIR="${IOS_SIM_STAGE_DIR:-/tmp/dailybread-ios-sim}"
+BUILD_ROOT="$STAGE_DIR"
+IOS_DIR="$BUILD_ROOT/ios"
+
+if [[ "$STAGE_DIR" != "$ROOT_DIR" ]]; then
+  mkdir -p "$STAGE_DIR"
+  rsync -a --delete \
+    --exclude ".git" \
+    --exclude "build" \
+    --exclude ".dart_tool" \
+    --exclude ".flutter-plugins-dependencies" \
+    --exclude "ios/Pods" \
+    --exclude "ios/.symlinks" \
+    "$ROOT_DIR/" "$STAGE_DIR/"
+
+  FLUTTER_BIN="$(command -v flutter || true)"
+  if [[ -z "$FLUTTER_BIN" && -x "$HOME/flutter/bin/flutter" ]]; then
+    FLUTTER_BIN="$HOME/flutter/bin/flutter"
+  fi
+
+  if [[ -n "$FLUTTER_BIN" ]]; then
+    (
+      cd "$BUILD_ROOT"
+      "$FLUTTER_BIN" pub get --suppress-analytics >/tmp/run_ios_sim_pub_get.log 2>&1
+    )
+  fi
+
+  pod install --project-directory="$IOS_DIR" >/tmp/run_ios_sim_pods.log 2>&1
+fi
+
+APP_PATH="$BUILD_ROOT/build/ios/iphonesimulator/Runner.app"
+DERIVED_DATA="$BUILD_ROOT/build/flutter-ios"
 APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/Runner.app"
 
 SIM_DEVICE="${1:-${SIM_DEVICE_ID:-}}"
@@ -24,6 +53,7 @@ fi
 
 echo "[iOS] Building Runner for simulator..."
 rm -rf "$DERIVED_DATA"
+/usr/bin/xattr -cr "$BUILD_ROOT" >/dev/null 2>&1 || true
 xcodebuild \
   -workspace "$IOS_DIR/Runner.xcworkspace" \
   -scheme Runner \
