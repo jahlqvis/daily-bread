@@ -34,14 +34,17 @@ class _FakeReadingDataSource extends BibleDataSource {
     return BibleChapter(
       book: 'Genesis',
       chapter: 1,
-      verses: [
-        BiblePassage(
+      verses: List.generate(
+        80,
+        (index) => BiblePassage(
           book: 'Genesis',
           chapter: 1,
-          verse: 1,
-          text: 'In the beginning God created the heaven and the earth.',
+          verse: index + 1,
+          text: index == 0
+              ? 'In the beginning God created the heaven and the earth.'
+              : 'Genesis 1:${index + 1} sample verse text.',
         ),
-      ],
+      ),
     );
   }
 }
@@ -52,6 +55,7 @@ void main() {
   Future<({BookmarksProvider bookmarksProvider})> pumpReadingScreen(
     WidgetTester tester, {
     List<VerseBookmark>? initialBookmarks,
+    int? highlightedVerse,
   }) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
@@ -71,6 +75,10 @@ void main() {
       bookmarksProvider.loadBookmarks(),
       planProvider.loadPlanState(),
     ]);
+
+    if (highlightedVerse != null) {
+      bibleProvider.setHighlightedVerse(highlightedVerse);
+    }
 
     await tester.pumpWidget(
       MultiProvider(
@@ -139,5 +147,12 @@ void main() {
 
     expect(result.bookmarksProvider.bookmarks.length, 1);
     expect(result.bookmarksProvider.bookmarks.first.note, isNull);
+  });
+
+  testWidgets('auto-scrolls to highlighted verse in long chapter', (tester) async {
+    await pumpReadingScreen(tester, highlightedVerse: 70);
+
+    expect(find.text('Jumped to verse 70'), findsOneWidget);
+    expect(find.text('Genesis 1:70 sample verse text.'), findsOneWidget);
   });
 }

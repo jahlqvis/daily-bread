@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import '../providers/bible_provider.dart';
 import '../providers/bookmarks_provider.dart';
@@ -180,12 +181,10 @@ class _ReadingScreenState extends State<ReadingScreen> {
         return;
       }
 
-      _lastAutoScrolledTarget = target;
-      Scrollable.ensureVisible(
+      _ensureVisibleWithFollowUp(
         targetContext,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOut,
-        alignment: 0.2,
+        target: target,
+        maxFollowUps: 2,
       );
     });
   }
@@ -226,12 +225,10 @@ class _ReadingScreenState extends State<ReadingScreen> {
 
             final targetContext = highlightedVerseKey.currentContext;
             if (targetContext != null) {
-              _lastAutoScrolledTarget = target;
-              Scrollable.ensureVisible(
+              _ensureVisibleWithFollowUp(
                 targetContext,
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
-                alignment: 0.2,
+                target: target,
+                maxFollowUps: 2,
               );
               return;
             }
@@ -308,14 +305,75 @@ class _ReadingScreenState extends State<ReadingScreen> {
       return false;
     }
 
-    _lastAutoScrolledTarget = target;
-    Scrollable.ensureVisible(
+    _ensureVisibleWithFollowUp(
       context,
-      duration: const Duration(milliseconds: 170),
-      curve: Curves.easeOut,
-      alignment: 0.2,
+      target: target,
+      maxFollowUps: 1,
     );
     return true;
+  }
+
+  void _ensureVisibleWithFollowUp(
+    BuildContext targetContext, {
+    required String target,
+    required int maxFollowUps,
+  }) {
+    Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      alignment: 0.18,
+    ).then((_) {
+      if (!mounted) {
+        return;
+      }
+
+      if (!targetContext.mounted) {
+        return;
+      }
+
+      if (_isVerseFullyVisible(targetContext) || maxFollowUps <= 0) {
+        _lastAutoScrolledTarget = target;
+        return;
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+
+        if (!targetContext.mounted) {
+          return;
+        }
+
+        _ensureVisibleWithFollowUp(
+          targetContext,
+          target: target,
+          maxFollowUps: maxFollowUps - 1,
+        );
+      });
+    });
+  }
+
+  bool _isVerseFullyVisible(BuildContext targetContext) {
+    if (!_scrollController.hasClients) {
+      return false;
+    }
+
+    final renderObject = targetContext.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) {
+      return false;
+    }
+
+    final viewport = RenderAbstractViewport.of(renderObject);
+
+    final topOffset = viewport.getOffsetToReveal(renderObject, 0).offset;
+    final bottomOffset = viewport.getOffsetToReveal(renderObject, 1).offset;
+    final viewportTop = _scrollController.offset + 16;
+    final viewportBottom =
+        _scrollController.offset + _scrollController.position.viewportDimension - 16;
+
+    return topOffset >= viewportTop && bottomOffset <= viewportBottom;
   }
 
   Widget _buildLoadError(BuildContext context, BibleProvider bibleProvider) {
