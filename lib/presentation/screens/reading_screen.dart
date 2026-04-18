@@ -9,6 +9,7 @@ import '../../data/models/bible_passage_model.dart';
 import '../widgets/translation_selector.dart';
 import '../providers/reading_plan_provider.dart';
 import 'bookmarks_screen.dart';
+import 'chapter_selection_screen.dart';
 import 'verse_search_screen.dart';
 import 'reading_plans_screen.dart';
 
@@ -28,6 +29,14 @@ class ReadingScreen extends StatelessWidget {
         ),
         actions: [
           const TranslationSelector(),
+          IconButton(
+            icon: const Icon(Icons.format_list_numbered),
+            tooltip: 'Choose chapter',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ChapterSelectionScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.bookmarks_outlined),
             onPressed: () => Navigator.push(
@@ -107,6 +116,7 @@ class ReadingScreen extends StatelessWidget {
                       },
                     ),
                   ),
+                  _buildChapterNavigation(context, bibleProvider),
                   if (!isRead) _buildMarkAsReadButton(context, chapter),
                 ],
               );
@@ -525,5 +535,96 @@ class ReadingScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildChapterNavigation(
+    BuildContext context,
+    BibleProvider bibleProvider,
+  ) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await _goToPreviousChapter(context, bibleProvider);
+              },
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Previous'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                await _goToNextChapter(context, bibleProvider);
+              },
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('Next'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _goToPreviousChapter(
+    BuildContext context,
+    BibleProvider bibleProvider,
+  ) async {
+    final currentBook = bibleProvider.selectedBook;
+    final currentChapter = bibleProvider.selectedChapter;
+
+    if (currentChapter > 1) {
+      bibleProvider.selectChapter(currentChapter - 1);
+      return;
+    }
+
+    final currentIndex = bibleProvider.books.indexOf(currentBook);
+    if (currentIndex <= 0) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You are at the first chapter.')),
+        );
+      }
+      return;
+    }
+
+    final previousBook = bibleProvider.books[currentIndex - 1];
+    final previousBookChapterCount = bibleProvider.getChapterCount(
+      previousBook,
+    );
+    await bibleProvider.selectBook(previousBook);
+    bibleProvider.selectChapter(previousBookChapterCount);
+  }
+
+  Future<void> _goToNextChapter(
+    BuildContext context,
+    BibleProvider bibleProvider,
+  ) async {
+    final currentBook = bibleProvider.selectedBook;
+    final currentChapter = bibleProvider.selectedChapter;
+    final chapterCount = bibleProvider.getChapterCount(currentBook);
+
+    if (currentChapter < chapterCount) {
+      bibleProvider.selectChapter(currentChapter + 1);
+      return;
+    }
+
+    final currentIndex = bibleProvider.books.indexOf(currentBook);
+    if (currentIndex < 0 || currentIndex >= bibleProvider.books.length - 1) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You are at the final chapter.')),
+        );
+      }
+      return;
+    }
+
+    final nextBook = bibleProvider.books[currentIndex + 1];
+    await bibleProvider.selectBook(nextBook);
+    bibleProvider.selectChapter(1);
   }
 }

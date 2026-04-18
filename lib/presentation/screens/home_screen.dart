@@ -97,10 +97,9 @@ class HomeScreen extends StatelessWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ReadingScreen()),
-        ),
+        onPressed: () async {
+          await _openSmartReading(context);
+        },
         icon: const Icon(Icons.menu_book),
         label: const Text('Read'),
       ),
@@ -520,55 +519,132 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildTodayReadingCard(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const BookSelectionScreen()),
-        ),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withAlpha(25),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.auto_stories,
-                  color: AppTheme.primaryColor,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Start Reading',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+    return Consumer3<BibleProvider, ReadingPlanProvider, UserProvider>(
+      builder: (context, bibleProvider, planProvider, userProvider, _) {
+        final smartTarget = _resolveSmartReadingTarget(
+          bibleProvider,
+          planProvider,
+          userProvider,
+        );
+
+        return Card(
+          child: InkWell(
+            onTap: () async {
+              await _openSmartReading(context);
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withAlpha(25),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.auto_stories,
+                      color: AppTheme.primaryColor,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Continue Reading',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Next up: ${smartTarget.$1} ${smartTarget.$2}',
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.tune),
+                    tooltip: 'Choose book/chapter',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const BookSelectionScreen(),
                       ),
                     ),
-                    Text(
-                      'Tap to begin your daily reading',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const Icon(Icons.arrow_forward_ios, color: Colors.grey),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
+  }
+
+  (String, int) _resolveSmartReadingTarget(
+    BibleProvider bibleProvider,
+    ReadingPlanProvider planProvider,
+    UserProvider userProvider,
+  ) {
+    final resumeReference = planProvider.resumeReference(
+      userProvider.user,
+      DateTime.now(),
+    );
+    if (resumeReference != null) {
+      return (resumeReference.book, resumeReference.chapter);
+    }
+
+    final selectedBook = bibleProvider.selectedBook;
+    final chapterCount = bibleProvider.getChapterCount(selectedBook);
+    final readChapters = userProvider.user.readingProgress[selectedBook] ?? {};
+
+    for (var chapter = 1; chapter <= chapterCount; chapter++) {
+      if (!readChapters.contains(chapter)) {
+        return (selectedBook, chapter);
+      }
+    }
+
+    for (final book in bibleProvider.books) {
+      final bookChapterCount = bibleProvider.getChapterCount(book);
+      final progress = userProvider.user.readingProgress[book] ?? {};
+      for (var chapter = 1; chapter <= bookChapterCount; chapter++) {
+        if (!progress.contains(chapter)) {
+          return (book, chapter);
+        }
+      }
+    }
+
+    return (selectedBook, bibleProvider.selectedChapter);
+  }
+
+  Future<void> _openSmartReading(BuildContext context) async {
+    final bibleProvider = context.read<BibleProvider>();
+    final planProvider = context.read<ReadingPlanProvider>();
+    final userProvider = context.read<UserProvider>();
+    final target = _resolveSmartReadingTarget(
+      bibleProvider,
+      planProvider,
+      userProvider,
+    );
+
+    if (bibleProvider.selectedBook != target.$1) {
+      await bibleProvider.selectBook(target.$1);
+    }
+    bibleProvider.selectChapter(target.$2);
+
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ReadingScreen()),
+      );
+    }
   }
 
   Widget _buildXpGainBanner(String message) {
