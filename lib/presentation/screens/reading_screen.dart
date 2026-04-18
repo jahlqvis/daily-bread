@@ -13,8 +13,22 @@ import 'chapter_selection_screen.dart';
 import 'verse_search_screen.dart';
 import 'reading_plans_screen.dart';
 
-class ReadingScreen extends StatelessWidget {
+class ReadingScreen extends StatefulWidget {
   const ReadingScreen({super.key});
+
+  @override
+  State<ReadingScreen> createState() => _ReadingScreenState();
+}
+
+class _ReadingScreenState extends State<ReadingScreen> {
+  String? _lastAutoScrolledTarget;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +83,18 @@ class ReadingScreen extends StatelessWidget {
                 return _buildNoContent(context, bibleProvider);
               }
 
+              final highlightedVerse = bibleProvider.highlightedVerse;
+              final highlightedVerseKey = GlobalKey();
+              if (highlightedVerse == null) {
+                _lastAutoScrolledTarget = null;
+              } else {
+                _scheduleScrollToHighlightedVerse(
+                  chapter: chapter,
+                  highlightedVerse: highlightedVerse,
+                  highlightedVerseKey: highlightedVerseKey,
+                );
+              }
+
               final isRead =
                   userProvider.user.readingProgress[chapter.book]?.contains(
                     chapter.chapter,
@@ -81,10 +107,11 @@ class ReadingScreen extends StatelessWidget {
                     chapter,
                     isRead,
                     bibleProvider.selectedTranslation.shortLabel,
-                    bibleProvider.highlightedVerse,
+                    highlightedVerse,
                   ),
                   Expanded(
                     child: ListView.builder(
+                      controller: _scrollController,
                       padding: const EdgeInsets.all(16),
                       itemCount: chapter.verses.length,
                       itemBuilder: (context, index) {
@@ -100,8 +127,10 @@ class ReadingScreen extends StatelessWidget {
                           context: context,
                           passage: passage,
                           displayNumber: passage.verse,
-                          isHighlighted:
-                              bibleProvider.highlightedVerse == passage.verse,
+                          isHighlighted: highlightedVerse == passage.verse,
+                          verseKey: highlightedVerse == passage.verse
+                              ? highlightedVerseKey
+                              : null,
                           isBookmarked: isBookmarked,
                           onToggleBookmark: () async {
                             await _toggleBookmark(
@@ -123,6 +152,153 @@ class ReadingScreen extends StatelessWidget {
             },
       ),
     );
+  }
+
+  void _scheduleScrollToHighlightedVerse({
+    required BibleChapter chapter,
+    required int highlightedVerse,
+    required GlobalKey highlightedVerseKey,
+  }) {
+    final target = '${chapter.book}|${chapter.chapter}|$highlightedVerse';
+    if (_lastAutoScrolledTarget == target) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      final targetContext = highlightedVerseKey.currentContext;
+      if (targetContext == null) {
+        _scrollToVerseByEstimate(
+          highlightedVerse,
+          chapter.verses.length,
+          highlightedVerseKey,
+          target,
+        );
+        return;
+      }
+
+      _lastAutoScrolledTarget = target;
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+        alignment: 0.2,
+      );
+    });
+  }
+
+  void _scrollToVerseByEstimate(
+    int highlightedVerse,
+    int verseCount,
+    GlobalKey highlightedVerseKey,
+    String target,
+  ) {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    final maxOffset = _scrollController.position.maxScrollExtent;
+    final clampedVerseIndex = (highlightedVerse - 1).clamp(0, verseCount - 1);
+    final progress = verseCount <= 1
+        ? 0.0
+        : clampedVerseIndex / (verseCount - 1);
+    final desiredOffset = maxOffset * progress;
+    final clampedOffset = desiredOffset.clamp(0.0, maxOffset);
+
+    _scrollController
+        .animateTo(
+          clampedOffset,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+        )
+        .then((_) {
+          if (!mounted) {
+            return;
+          }
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
+              return;
+            }
+
+            final targetContext = highlightedVerseKey.currentContext;
+            if (targetContext != null) {
+              _lastAutoScrolledTarget = target;
+              Scrollable.ensureVisible(
+                targetContext,
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                alignment: 0.2,
+              );
+              return;
+            }
+
+            _scrollToVerseByEndExpansion(
+              highlightedVerseKey: highlightedVerseKey,
+              target: target,
+            );
+          });
+        });
+  }
+
+  Future<void> _scrollToVerseByEndExpansion({
+    required GlobalKey highlightedVerseKey,
+    required String target,
+  }) async {
+    if (!mounted || !_scrollController.hasClients) {
+      return;
+    }
+
+    for (var attempt = 0; attempt < 6; attempt++) {
+      final targetContext = highlightedVerseKey.currentContext;
+      if (targetContext != null) {
+        _lastAutoScrolledTarget = target;
+        Scrollable.ensureVisible(
+          targetContext,
+          duration: const Duration(milliseconds: 170),
+          curve: Curves.easeOut,
+          alignment: 0.2,
+        );
+        return;
+      }
+
+      final beforeMax = _scrollController.position.maxScrollExtent;
+      await _scrollController.animateTo(
+        beforeMax,
+        duration: const Duration(milliseconds: 190),
+        curve: Curves.easeOut,
+      );
+
+      if (!mounted || !_scrollController.hasClients) {
+        return;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+      final afterMax = _scrollController.position.maxScrollExtent;
+      final reachedEnd = (_scrollController.offset - afterMax).abs() < 1.0;
+      final didNotGrow = (afterMax - beforeMax).abs() < 1.0;
+      if (reachedEnd && didNotGrow) {
+        break;
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final finalContext = highlightedVerseKey.currentContext;
+    if (finalContext != null) {
+      _lastAutoScrolledTarget = target;
+      Scrollable.ensureVisible(
+        finalContext,
+        duration: const Duration(milliseconds: 170),
+        curve: Curves.easeOut,
+        alignment: 0.2,
+      );
+    }
   }
 
   Widget _buildLoadError(BuildContext context, BibleProvider bibleProvider) {
@@ -255,12 +431,14 @@ class ReadingScreen extends StatelessWidget {
     required BiblePassage passage,
     required int displayNumber,
     required bool isHighlighted,
+    required Key? verseKey,
     required bool isBookmarked,
     required VoidCallback onToggleBookmark,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: AnimatedContainer(
+        key: verseKey,
         duration: const Duration(milliseconds: 220),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
