@@ -250,4 +250,54 @@ void main() {
     expect(bibleProvider.selectedChapter, 13);
     expect(bibleProvider.highlightedVerse, 34);
   });
+
+  testWidgets('long press bookmark adds note for search result', (
+    tester,
+  ) async {
+    await pumpSearchScreen(tester, _FakeSearchDataSource());
+
+    await tester.enterText(find.byType(TextField), 'love');
+    await tester.pump(const Duration(milliseconds: 360));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    await tester.longPress(find.byIcon(Icons.bookmark_border).first);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Note for John 13:34'), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextField).last,
+      'Love commandment note',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final context = tester.element(find.byType(VerseSearchScreen));
+    final bookmarksProvider = context.read<BookmarksProvider>();
+    expect(bookmarksProvider.bookmarks.length, 1);
+    expect(bookmarksProvider.bookmarks.first.note, 'Love commandment note');
+  });
+
+  testWidgets('long press bookmarked result can clear note', (tester) async {
+    await pumpSearchScreen(tester, _FakeSearchDataSource());
+
+    await tester.enterText(find.byType(TextField), 'love');
+    await tester.pump(const Duration(milliseconds: 360));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    await tester.longPress(find.byIcon(Icons.bookmark_border).first);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.enterText(find.byType(TextField).last, 'Temporary note');
+    await tester.tap(find.text('Save'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.longPress(find.byIcon(Icons.bookmark).first);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Clear'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final context = tester.element(find.byType(VerseSearchScreen));
+    final bookmarksProvider = context.read<BookmarksProvider>();
+    expect(bookmarksProvider.bookmarks.length, 1);
+    expect(bookmarksProvider.bookmarks.first.note, isNull);
+  });
 }
