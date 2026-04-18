@@ -180,6 +180,10 @@ class _InMemoryLocalDataSource implements LocalDataSource {
   DateTime? _activePlanStartedAt;
   Set<String> _completedPlanRewardIds = <String>{};
   List<VerseBookmark> _bookmarks = <VerseBookmark>[];
+  String? _cloudSnapshot;
+  DateTime? _cloudLastSyncedAt;
+  bool _dailyReminderEnabled = false;
+  String _dailyReminderTime = '08:00';
 
   void seedUser(UserModel user) {
     _user = user;
@@ -253,5 +257,45 @@ class _InMemoryLocalDataSource implements LocalDataSource {
   @override
   Future<void> saveBookmarks(List<VerseBookmark> bookmarks) async {
     _bookmarks = bookmarks;
+  }
+
+  @override
+  String? getCloudSnapshot() {
+    return _cloudSnapshot;
+  }
+
+  @override
+  Future<void> saveCloudSnapshot(String snapshotJson) async {
+    _cloudSnapshot = snapshotJson;
+  }
+
+  @override
+  DateTime? getCloudLastSyncedAt() {
+    return _cloudLastSyncedAt;
+  }
+
+  @override
+  Future<void> saveCloudLastSyncedAt(DateTime value) async {
+    _cloudLastSyncedAt = value;
+  }
+
+  @override
+  bool isDailyReminderEnabled() {
+    return _dailyReminderEnabled;
+  }
+
+  @override
+  Future<void> saveDailyReminderEnabled(bool enabled) async {
+    _dailyReminderEnabled = enabled;
+  }
+
+  @override
+  String getDailyReminderTime() {
+    return _dailyReminderTime;
+  }
+
+  @override
+  Future<void> saveDailyReminderTime(String value) async {
+    _dailyReminderTime = value;
   }
 }

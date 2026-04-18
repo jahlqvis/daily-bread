@@ -67,4 +67,34 @@ void main() {
       expect(dataSource.getBookmarks(), isEmpty);
     });
   });
+
+  group('LocalDataSource app services state', () {
+    test('stores cloud sync metadata', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final dataSource = LocalDataSource(prefs);
+
+      final now = DateTime(2026, 4, 18, 9, 30);
+      await dataSource.saveCloudSnapshot('{"ok":true}');
+      await dataSource.saveCloudLastSyncedAt(now);
+
+      expect(dataSource.getCloudSnapshot(), '{"ok":true}');
+      expect(dataSource.getCloudLastSyncedAt(), now);
+    });
+
+    test('stores reminder settings', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final dataSource = LocalDataSource(prefs);
+
+      expect(dataSource.isDailyReminderEnabled(), isFalse);
+      expect(dataSource.getDailyReminderTime(), '08:00');
+
+      await dataSource.saveDailyReminderEnabled(true);
+      await dataSource.saveDailyReminderTime('06:45');
+
+      expect(dataSource.isDailyReminderEnabled(), isTrue);
+      expect(dataSource.getDailyReminderTime(), '06:45');
+    });
+  });
 }

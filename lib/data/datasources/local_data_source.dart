@@ -9,6 +9,10 @@ class LocalDataSource {
   static const String _activePlanStartedAtKey = 'active_plan_started_at';
   static const String _completedPlanRewardsKey = 'completed_plan_reward_ids';
   static const String _bookmarksKey = 'verse_bookmarks';
+  static const String _cloudSnapshotKey = 'cloud_sync_snapshot';
+  static const String _cloudLastSyncedAtKey = 'cloud_last_synced_at';
+  static const String _dailyReminderEnabledKey = 'daily_reminder_enabled';
+  static const String _dailyReminderTimeKey = 'daily_reminder_time';
   final SharedPreferences _prefs;
 
   LocalDataSource(this._prefs);
@@ -96,5 +100,41 @@ class LocalDataSource {
 
   Future<void> clearBookmarks() async {
     await _prefs.remove(_bookmarksKey);
+  }
+
+  String? getCloudSnapshot() {
+    return _prefs.getString(_cloudSnapshotKey);
+  }
+
+  Future<void> saveCloudSnapshot(String snapshotJson) async {
+    await _prefs.setString(_cloudSnapshotKey, snapshotJson);
+  }
+
+  DateTime? getCloudLastSyncedAt() {
+    final iso = _prefs.getString(_cloudLastSyncedAtKey);
+    if (iso == null || iso.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(iso);
+  }
+
+  Future<void> saveCloudLastSyncedAt(DateTime value) async {
+    await _prefs.setString(_cloudLastSyncedAtKey, value.toIso8601String());
+  }
+
+  bool isDailyReminderEnabled() {
+    return _prefs.getBool(_dailyReminderEnabledKey) ?? false;
+  }
+
+  Future<void> saveDailyReminderEnabled(bool enabled) async {
+    await _prefs.setBool(_dailyReminderEnabledKey, enabled);
+  }
+
+  String getDailyReminderTime() {
+    return _prefs.getString(_dailyReminderTimeKey) ?? '08:00';
+  }
+
+  Future<void> saveDailyReminderTime(String value) async {
+    await _prefs.setString(_dailyReminderTimeKey, value);
   }
 }

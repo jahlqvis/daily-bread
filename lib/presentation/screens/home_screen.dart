@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../providers/user_provider.dart';
 import '../providers/bible_provider.dart';
 import '../providers/reading_plan_provider.dart';
+import '../providers/bookmarks_provider.dart';
+import '../providers/app_services_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/bible_translation.dart';
 import '../widgets/translation_selector.dart';
@@ -83,6 +85,8 @@ class HomeScreen extends StatelessWidget {
                 _buildXpCard(context, userProvider),
                 const SizedBox(height: 16),
                 _buildTranslationCard(context),
+                const SizedBox(height: 16),
+                _buildSyncAndReminderCard(context),
                 const SizedBox(height: 16),
                 _buildPlanCard(context),
                 const SizedBox(height: 16),
@@ -307,6 +311,113 @@ class HomeScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  Widget _buildSyncAndReminderCard(BuildContext context) {
+    return Consumer3<AppServicesProvider, UserProvider, BookmarksProvider>(
+      builder: (context, servicesProvider, userProvider, bookmarksProvider, _) {
+        final syncedAt = servicesProvider.lastSyncedAt;
+        final syncedLabel = syncedAt == null
+            ? 'Not synced yet'
+            : 'Last synced ${DateFormat('MMM d, HH:mm').format(syncedAt)}';
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Backup & Reminders',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(syncedLabel, style: TextStyle(color: Colors.grey[700])),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: servicesProvider.isSyncing
+                        ? null
+                        : () async {
+                            await servicesProvider.syncNow(
+                              user: userProvider.user,
+                              bookmarks: bookmarksProvider.bookmarks,
+                            );
+
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Local cloud snapshot updated'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                    icon: servicesProvider.isSyncing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cloud_upload_outlined),
+                    label: Text(
+                      servicesProvider.isSyncing ? 'Syncing...' : 'Sync now',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Daily reading reminder'),
+                  subtitle: Text(
+                    servicesProvider.reminderSupported
+                        ? 'Reminder set for ${servicesProvider.reminderTime}'
+                        : 'Preference is saved now. Native notifications will be wired next.',
+                  ),
+                  value: servicesProvider.reminderEnabled,
+                  onChanged: (value) async {
+                    await servicesProvider.setReminderEnabled(value);
+                  },
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      final initialTime = _parseReminderTime(
+                        servicesProvider.reminderTime,
+                      );
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: initialTime,
+                      );
+                      if (picked == null) {
+                        return;
+                      }
+
+                      final hh = picked.hour.toString().padLeft(2, '0');
+                      final mm = picked.minute.toString().padLeft(2, '0');
+                      await servicesProvider.setReminderTime('$hh:$mm');
+                    },
+                    icon: const Icon(Icons.schedule),
+                    label: Text(
+                      'Reminder time: ${servicesProvider.reminderTime}',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  TimeOfDay _parseReminderTime(String hhmm) {
+    final parts = hhmm.split(':');
+    final hour = parts.isNotEmpty ? int.tryParse(parts.first) ?? 8 : 8;
+    final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    return TimeOfDay(hour: hour.clamp(0, 23), minute: minute.clamp(0, 59));
   }
 
   Widget _buildWelcomeCard(String today) {
