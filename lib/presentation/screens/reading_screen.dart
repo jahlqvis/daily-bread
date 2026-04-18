@@ -294,16 +294,122 @@ class ReadingScreen extends StatelessWidget {
             ),
             IconButton(
               onPressed: onToggleBookmark,
+              onLongPress: () async {
+                await _editBookmarkNote(
+                  context,
+                  passage: passage,
+                  translation: context
+                      .read<BibleProvider>()
+                      .selectedTranslation,
+                );
+              },
               icon: Icon(
                 isBookmarked ? Icons.bookmark : Icons.bookmark_border,
                 color: isBookmarked ? AppTheme.primaryColor : Colors.grey[600],
               ),
-              tooltip: isBookmarked ? 'Remove bookmark' : 'Add bookmark',
+              tooltip: isBookmarked
+                  ? 'Tap: remove, hold: edit note'
+                  : 'Tap: add, hold: add note',
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _editBookmarkNote(
+    BuildContext context, {
+    required BiblePassage passage,
+    required BibleTranslation translation,
+  }) async {
+    final bookmarksProvider = context.read<BookmarksProvider>();
+    final alreadyBookmarked = bookmarksProvider.isBookmarked(
+      passage.book,
+      passage.chapter,
+      passage.verse,
+      translation.id,
+    );
+
+    if (!alreadyBookmarked) {
+      await bookmarksProvider.toggleBookmark(
+        book: passage.book,
+        chapter: passage.chapter,
+        verse: passage.verse,
+        translationId: translation.id,
+      );
+
+      if (!context.mounted) {
+        return;
+      }
+    }
+
+    final existing = bookmarksProvider.bookmarkFor(
+      passage.book,
+      passage.chapter,
+      passage.verse,
+      translation.id,
+    );
+    if (existing == null) {
+      return;
+    }
+
+    final controller = TextEditingController(text: existing.note ?? '');
+    final updatedNote = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('Note for ${passage.reference}'),
+          content: TextField(
+            controller: controller,
+            maxLines: 4,
+            minLines: 2,
+            decoration: const InputDecoration(
+              hintText: 'Write your note...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, ''),
+              child: const Text('Clear'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (updatedNote == null) {
+      return;
+    }
+
+    await bookmarksProvider.updateNote(
+      passage.book,
+      passage.chapter,
+      passage.verse,
+      translation.id,
+      updatedNote,
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            updatedNote.trim().isEmpty
+                ? 'Cleared note for ${passage.reference}'
+                : 'Updated note for ${passage.reference}',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Future<void> _toggleBookmark(

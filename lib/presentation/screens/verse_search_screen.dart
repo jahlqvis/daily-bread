@@ -270,11 +270,21 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
                     wasBookmarked: isBookmarked,
                   );
                 },
+                onLongPress: () async {
+                  await _editBookmarkNote(
+                    context,
+                    bookmarksProvider: bookmarksProvider,
+                    result: result,
+                    translation: bibleProvider.selectedTranslation,
+                  );
+                },
                 icon: Icon(
                   isBookmarked ? Icons.bookmark : Icons.bookmark_border,
                   color: isBookmarked ? Theme.of(context).primaryColor : null,
                 ),
-                tooltip: isBookmarked ? 'Remove bookmark' : 'Add bookmark',
+                tooltip: isBookmarked
+                    ? 'Tap: remove, hold: edit note'
+                    : 'Tap: add, hold: add note',
               ),
               const Icon(Icons.arrow_forward_ios, size: 14),
             ],
@@ -306,6 +316,101 @@ class _VerseSearchScreenState extends State<VerseSearchScreen> {
             wasBookmarked
                 ? 'Removed bookmark for ${result.reference}'
                 : 'Bookmarked ${result.reference}',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _editBookmarkNote(
+    BuildContext context, {
+    required BookmarksProvider bookmarksProvider,
+    required BiblePassage result,
+    required BibleTranslation translation,
+  }) async {
+    final alreadyBookmarked = bookmarksProvider.isBookmarked(
+      result.book,
+      result.chapter,
+      result.verse,
+      translation.id,
+    );
+
+    if (!alreadyBookmarked) {
+      await bookmarksProvider.toggleBookmark(
+        book: result.book,
+        chapter: result.chapter,
+        verse: result.verse,
+        translationId: translation.id,
+      );
+
+      if (!context.mounted) {
+        return;
+      }
+    }
+
+    final existing = bookmarksProvider.bookmarkFor(
+      result.book,
+      result.chapter,
+      result.verse,
+      translation.id,
+    );
+    if (existing == null) {
+      return;
+    }
+
+    final controller = TextEditingController(text: existing.note ?? '');
+    final updatedNote = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('Note for ${result.reference}'),
+          content: TextField(
+            controller: controller,
+            maxLines: 4,
+            minLines: 2,
+            decoration: const InputDecoration(
+              hintText: 'Write your note...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, ''),
+              child: const Text('Clear'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (updatedNote == null) {
+      return;
+    }
+
+    await bookmarksProvider.updateNote(
+      result.book,
+      result.chapter,
+      result.verse,
+      translation.id,
+      updatedNote,
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            updatedNote.trim().isEmpty
+                ? 'Cleared note for ${result.reference}'
+                : 'Updated note for ${result.reference}',
           ),
           duration: const Duration(seconds: 2),
         ),
