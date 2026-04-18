@@ -69,88 +69,107 @@ class _ReadingScreenState extends State<ReadingScreen> {
         ],
       ),
       body: Consumer3<BibleProvider, UserProvider, BookmarksProvider>(
-        builder:
-            (context, bibleProvider, userProvider, bookmarksProvider, child) {
-              if (bibleProvider.isLoading) {
-                return const Center(child: CircularProgressIndicator());
-              }
+        builder: (context, bibleProvider, userProvider, bookmarksProvider, child) {
+          if (bibleProvider.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-              if (bibleProvider.loadError != null) {
-                return _buildLoadError(context, bibleProvider);
-              }
+          if (bibleProvider.loadError != null) {
+            return _buildLoadError(context, bibleProvider);
+          }
 
-              final chapter = bibleProvider.getCurrentChapter();
-              if (chapter == null) {
-                return _buildNoContent(context, bibleProvider);
-              }
+          final chapter = bibleProvider.getCurrentChapter();
+          if (chapter == null) {
+            return _buildNoContent(context, bibleProvider);
+          }
 
-              final highlightedVerse = bibleProvider.highlightedVerse;
-              final highlightedVerseKey = GlobalKey();
-              if (highlightedVerse == null) {
-                _lastAutoScrolledTarget = null;
-              } else {
-                _scheduleScrollToHighlightedVerse(
-                  chapter: chapter,
-                  highlightedVerse: highlightedVerse,
-                  highlightedVerseKey: highlightedVerseKey,
-                );
-              }
+          final highlightedVerse = bibleProvider.highlightedVerse;
+          final highlightedVerseKey = GlobalKey();
+          if (highlightedVerse == null) {
+            _lastAutoScrolledTarget = null;
+          } else {
+            _scheduleScrollToHighlightedVerse(
+              chapter: chapter,
+              highlightedVerse: highlightedVerse,
+              highlightedVerseKey: highlightedVerseKey,
+            );
+          }
 
-              final isRead =
-                  userProvider.user.readingProgress[chapter.book]?.contains(
-                    chapter.chapter,
-                  ) ??
-                  false;
+          final isRead =
+              userProvider.user.readingProgress[chapter.book]?.contains(
+                chapter.chapter,
+              ) ??
+              false;
 
-              return Column(
-                children: [
-                  _buildChapterHeader(
-                    chapter,
-                    isRead,
-                    bibleProvider.selectedTranslation.shortLabel,
-                    highlightedVerse,
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.all(16),
-                      itemCount: chapter.verses.length,
-                      itemBuilder: (context, index) {
-                        final passage = chapter.verses[index];
-                        final isBookmarked = bookmarksProvider.isBookmarked(
-                          passage.book,
-                          passage.chapter,
-                          passage.verse,
-                          bibleProvider.selectedTranslation.id,
-                        );
-
-                        return _buildVerse(
-                          context: context,
-                          passage: passage,
-                          displayNumber: passage.verse,
-                          isHighlighted: highlightedVerse == passage.verse,
-                          verseKey: highlightedVerse == passage.verse
-                              ? highlightedVerseKey
-                              : null,
-                          isBookmarked: isBookmarked,
-                          onToggleBookmark: () async {
-                            await _toggleBookmark(
-                              context,
-                              bookmarksProvider: bookmarksProvider,
-                              passage: passage,
-                              translation: bibleProvider.selectedTranslation,
-                              wasBookmarked: isBookmarked,
-                            );
-                          },
-                        );
-                      },
+          return Column(
+            children: [
+              _buildChapterHeader(
+                chapter,
+                isRead,
+                bibleProvider.selectedTranslation.shortLabel,
+                highlightedVerse,
+              ),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.04),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: ListView.builder(
+                    key: ValueKey(
+                      '${chapter.book}-${chapter.chapter}-${bibleProvider.selectedTranslation.id}',
                     ),
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: chapter.verses.length,
+                    itemBuilder: (context, index) {
+                      final passage = chapter.verses[index];
+                      final isBookmarked = bookmarksProvider.isBookmarked(
+                        passage.book,
+                        passage.chapter,
+                        passage.verse,
+                        bibleProvider.selectedTranslation.id,
+                      );
+
+                      return _buildVerse(
+                        context: context,
+                        passage: passage,
+                        displayNumber: passage.verse,
+                        isHighlighted: highlightedVerse == passage.verse,
+                        verseKey: highlightedVerse == passage.verse
+                            ? highlightedVerseKey
+                            : null,
+                        isBookmarked: isBookmarked,
+                        onToggleBookmark: () async {
+                          await _toggleBookmark(
+                            context,
+                            bookmarksProvider: bookmarksProvider,
+                            passage: passage,
+                            translation: bibleProvider.selectedTranslation,
+                            wasBookmarked: isBookmarked,
+                          );
+                        },
+                      );
+                    },
                   ),
-                  _buildChapterNavigation(context, bibleProvider),
-                  if (!isRead) _buildMarkAsReadButton(context, chapter),
-                ],
-              );
-            },
+                ),
+              ),
+              _buildChapterNavigation(context, bibleProvider),
+              if (!isRead) _buildMarkAsReadButton(context, chapter),
+            ],
+          );
+        },
       ),
     );
   }
@@ -284,7 +303,10 @@ class _ReadingScreenState extends State<ReadingScreen> {
                   (_scrollController.offset - afterMax).abs() < 1.0;
               final didNotGrow = (afterMax - beforeMax).abs() < 1.0;
               if (reachedEnd && didNotGrow) {
-                _ensureHighlightedVisibleIfPossible(highlightedVerseKey, target);
+                _ensureHighlightedVisibleIfPossible(
+                  highlightedVerseKey,
+                  target,
+                );
                 return;
               }
 
@@ -305,11 +327,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
       return false;
     }
 
-    _ensureVisibleWithFollowUp(
-      context,
-      target: target,
-      maxFollowUps: 1,
-    );
+    _ensureVisibleWithFollowUp(context, target: target, maxFollowUps: 1);
     return true;
   }
 
@@ -371,7 +389,9 @@ class _ReadingScreenState extends State<ReadingScreen> {
     final bottomOffset = viewport.getOffsetToReveal(renderObject, 1).offset;
     final viewportTop = _scrollController.offset + 16;
     final viewportBottom =
-        _scrollController.offset + _scrollController.position.viewportDimension - 16;
+        _scrollController.offset +
+        _scrollController.position.viewportDimension -
+        16;
 
     return topOffset >= viewportTop && bottomOffset <= viewportBottom;
   }
@@ -512,69 +532,93 @@ class _ReadingScreenState extends State<ReadingScreen> {
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: AnimatedContainer(
-        key: verseKey,
-        duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: isHighlighted
-              ? AppTheme.primaryColor.withAlpha(22)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
+      child: TweenAnimationBuilder<double>(
+        key: ValueKey('verse-$displayNumber-$isHighlighted'),
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutBack,
+        tween: Tween<double>(begin: isHighlighted ? 0.97 : 1.0, end: 1.0),
+        builder: (context, scale, child) {
+          return Transform.scale(
+            key: verseKey,
+            scale: scale,
+            alignment: Alignment.topCenter,
+            child: child,
+          );
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
             color: isHighlighted
-                ? AppTheme.primaryColor.withAlpha(90)
+                ? AppTheme.primaryColor.withAlpha(22)
                 : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isHighlighted
+                  ? AppTheme.primaryColor.withAlpha(90)
+                  : Colors.transparent,
+            ),
+            boxShadow: isHighlighted
+                ? [
+                    BoxShadow(
+                      color: AppTheme.primaryColor.withAlpha(32),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : const [],
           ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withAlpha(25),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Center(
-                child: Text(
-                  '$displayNumber',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryColor,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withAlpha(25),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: Text(
+                    '$displayNumber',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryColor,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                passage.text,
-                style: const TextStyle(fontSize: 16, height: 1.6),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  passage.text,
+                  style: const TextStyle(fontSize: 16, height: 1.6),
+                ),
               ),
-            ),
-            IconButton(
-              onPressed: onToggleBookmark,
-              onLongPress: () async {
-                await _editBookmarkNote(
-                  context,
-                  passage: passage,
-                  translation: context
-                      .read<BibleProvider>()
-                      .selectedTranslation,
-                );
-              },
-              icon: Icon(
-                isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                color: isBookmarked ? AppTheme.primaryColor : Colors.grey[600],
+              IconButton(
+                onPressed: onToggleBookmark,
+                onLongPress: () async {
+                  await _editBookmarkNote(
+                    context,
+                    passage: passage,
+                    translation: context
+                        .read<BibleProvider>()
+                        .selectedTranslation,
+                  );
+                },
+                icon: Icon(
+                  isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+                  color: isBookmarked
+                      ? AppTheme.primaryColor
+                      : Colors.grey[600],
+                ),
+                tooltip: isBookmarked
+                    ? 'Tap: remove, hold: edit note'
+                    : 'Tap: add, hold: add note',
               ),
-              tooltip: isBookmarked
-                  ? 'Tap: remove, hold: edit note'
-                  : 'Tap: add, hold: add note',
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -832,6 +876,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
 
     if (currentChapter > 1) {
       bibleProvider.selectChapter(currentChapter - 1);
+      _scrollToChapterTop();
       return;
     }
 
@@ -851,6 +896,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
     );
     await bibleProvider.selectBook(previousBook);
     bibleProvider.selectChapter(previousBookChapterCount);
+    _scrollToChapterTop();
   }
 
   Future<void> _goToNextChapter(
@@ -863,6 +909,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
 
     if (currentChapter < chapterCount) {
       bibleProvider.selectChapter(currentChapter + 1);
+      _scrollToChapterTop();
       return;
     }
 
@@ -879,5 +926,19 @@ class _ReadingScreenState extends State<ReadingScreen> {
     final nextBook = bibleProvider.books[currentIndex + 1];
     await bibleProvider.selectBook(nextBook);
     bibleProvider.selectChapter(1);
+    _scrollToChapterTop();
+  }
+
+  void _scrollToChapterTop() {
+    _lastAutoScrolledTarget = null;
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
   }
 }
