@@ -244,61 +244,78 @@ class _ReadingScreenState extends State<ReadingScreen> {
         });
   }
 
-  Future<void> _scrollToVerseByEndExpansion({
+  void _scrollToVerseByEndExpansion({
     required GlobalKey highlightedVerseKey,
     required String target,
-  }) async {
+  }) {
     if (!mounted || !_scrollController.hasClients) {
       return;
     }
 
-    for (var attempt = 0; attempt < 6; attempt++) {
-      final targetContext = highlightedVerseKey.currentContext;
-      if (targetContext != null) {
-        _lastAutoScrolledTarget = target;
-        Scrollable.ensureVisible(
-          targetContext,
-          duration: const Duration(milliseconds: 170),
-          curve: Curves.easeOut,
-          alignment: 0.2,
-        );
-        return;
-      }
-
-      final beforeMax = _scrollController.position.maxScrollExtent;
-      await _scrollController.animateTo(
-        beforeMax,
-        duration: const Duration(milliseconds: 190),
-        curve: Curves.easeOut,
-      );
-
+    void attemptExpansion(int attempt) {
       if (!mounted || !_scrollController.hasClients) {
         return;
       }
 
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-      final afterMax = _scrollController.position.maxScrollExtent;
-      final reachedEnd = (_scrollController.offset - afterMax).abs() < 1.0;
-      final didNotGrow = (afterMax - beforeMax).abs() < 1.0;
-      if (reachedEnd && didNotGrow) {
-        break;
+      if (_ensureHighlightedVisibleIfPossible(highlightedVerseKey, target)) {
+        return;
       }
+
+      if (attempt >= 6) {
+        return;
+      }
+
+      final beforeMax = _scrollController.position.maxScrollExtent;
+      _scrollController
+          .animateTo(
+            beforeMax,
+            duration: const Duration(milliseconds: 190),
+            curve: Curves.easeOut,
+          )
+          .then((_) {
+            if (!mounted || !_scrollController.hasClients) {
+              return;
+            }
+
+            Future<void>.delayed(const Duration(milliseconds: 16)).then((_) {
+              if (!mounted || !_scrollController.hasClients) {
+                return;
+              }
+
+              final afterMax = _scrollController.position.maxScrollExtent;
+              final reachedEnd =
+                  (_scrollController.offset - afterMax).abs() < 1.0;
+              final didNotGrow = (afterMax - beforeMax).abs() < 1.0;
+              if (reachedEnd && didNotGrow) {
+                _ensureHighlightedVisibleIfPossible(highlightedVerseKey, target);
+                return;
+              }
+
+              attemptExpansion(attempt + 1);
+            });
+          });
     }
 
-    if (!mounted) {
-      return;
+    attemptExpansion(0);
+  }
+
+  bool _ensureHighlightedVisibleIfPossible(
+    GlobalKey highlightedVerseKey,
+    String target,
+  ) {
+    final context = highlightedVerseKey.currentContext;
+    if (context == null) {
+      return false;
     }
 
-    final finalContext = highlightedVerseKey.currentContext;
-    if (finalContext != null) {
-      _lastAutoScrolledTarget = target;
-      Scrollable.ensureVisible(
-        finalContext,
-        duration: const Duration(milliseconds: 170),
-        curve: Curves.easeOut,
-        alignment: 0.2,
-      );
-    }
+    _lastAutoScrolledTarget = target;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 170),
+      curve: Curves.easeOut,
+      alignment: 0.2,
+    );
+    return true;
   }
 
   Widget _buildLoadError(BuildContext context, BibleProvider bibleProvider) {
