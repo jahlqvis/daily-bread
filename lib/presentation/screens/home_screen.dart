@@ -349,6 +349,7 @@ class HomeScreen extends StatelessWidget {
                             await servicesProvider.syncNow(
                               user: userProvider.user,
                               bookmarks: bookmarksProvider.bookmarks,
+                              tombstones: bookmarksProvider.tombstones,
                             );
                             await userProvider.loadUser();
                             await bookmarksProvider.loadBookmarks();

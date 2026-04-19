@@ -66,6 +66,23 @@ void main() {
 
       expect(dataSource.getBookmarks(), isEmpty);
     });
+
+    test('saves and restores bookmark tombstones', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final dataSource = LocalDataSource(prefs);
+
+      final tombstones = {'web|John|3|16': DateTime(2026, 4, 20, 9)};
+      await dataSource.saveBookmarkTombstones(tombstones);
+
+      expect(
+        dataSource.getBookmarkTombstones()['web|John|3|16'],
+        DateTime(2026, 4, 20, 9),
+      );
+
+      await dataSource.clearBookmarkTombstones();
+      expect(dataSource.getBookmarkTombstones(), isEmpty);
+    });
   });
 
   group('LocalDataSource app services state', () {

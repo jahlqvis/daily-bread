@@ -180,6 +180,7 @@ class _InMemoryLocalDataSource implements LocalDataSource {
   DateTime? _activePlanStartedAt;
   Set<String> _completedPlanRewardIds = <String>{};
   List<VerseBookmark> _bookmarks = <VerseBookmark>[];
+  Map<String, DateTime> _bookmarkTombstones = <String, DateTime>{};
   String? _cloudSnapshot;
   DateTime? _cloudLastSyncedAt;
   bool _dailyReminderEnabled = false;
@@ -257,6 +258,21 @@ class _InMemoryLocalDataSource implements LocalDataSource {
   @override
   Future<void> saveBookmarks(List<VerseBookmark> bookmarks) async {
     _bookmarks = bookmarks;
+  }
+
+  @override
+  Map<String, DateTime> getBookmarkTombstones() {
+    return _bookmarkTombstones;
+  }
+
+  @override
+  Future<void> saveBookmarkTombstones(Map<String, DateTime> tombstones) async {
+    _bookmarkTombstones = tombstones;
+  }
+
+  @override
+  Future<void> clearBookmarkTombstones() async {
+    _bookmarkTombstones = <String, DateTime>{};
   }
 
   @override

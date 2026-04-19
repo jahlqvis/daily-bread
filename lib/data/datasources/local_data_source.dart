@@ -9,6 +9,7 @@ class LocalDataSource {
   static const String _activePlanStartedAtKey = 'active_plan_started_at';
   static const String _completedPlanRewardsKey = 'completed_plan_reward_ids';
   static const String _bookmarksKey = 'verse_bookmarks';
+  static const String _bookmarkTombstonesKey = 'verse_bookmark_tombstones';
   static const String _cloudSnapshotKey = 'cloud_sync_snapshot';
   static const String _cloudLastSyncedAtKey = 'cloud_last_synced_at';
   static const String _dailyReminderEnabledKey = 'daily_reminder_enabled';
@@ -100,6 +101,38 @@ class LocalDataSource {
 
   Future<void> clearBookmarks() async {
     await _prefs.remove(_bookmarksKey);
+  }
+
+  Map<String, DateTime> getBookmarkTombstones() {
+    final jsonString = _prefs.getString(_bookmarkTombstonesKey);
+    if (jsonString == null || jsonString.isEmpty) {
+      return const {};
+    }
+
+    final decoded = jsonDecode(jsonString);
+    if (decoded is! Map) {
+      return const {};
+    }
+
+    final tombstones = <String, DateTime>{};
+    decoded.forEach((key, value) {
+      final parsed = DateTime.tryParse(value?.toString() ?? '');
+      if (parsed != null) {
+        tombstones[key.toString()] = parsed;
+      }
+    });
+    return tombstones;
+  }
+
+  Future<void> saveBookmarkTombstones(Map<String, DateTime> tombstones) async {
+    final payload = tombstones.map(
+      (key, value) => MapEntry(key, value.toIso8601String()),
+    );
+    await _prefs.setString(_bookmarkTombstonesKey, jsonEncode(payload));
+  }
+
+  Future<void> clearBookmarkTombstones() async {
+    await _prefs.remove(_bookmarkTombstonesKey);
   }
 
   String? getCloudSnapshot() {

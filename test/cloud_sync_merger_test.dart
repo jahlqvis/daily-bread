@@ -51,7 +51,7 @@ void main() {
       expect(merged.user.readingProgress['John'], {1});
     });
 
-    test('merges bookmarks by id and keeps latest createdAt', () {
+    test('merges bookmarks by id and keeps latest updatedAt', () {
       final localBookmark = VerseBookmark(
         book: 'John',
         chapter: 3,
@@ -59,6 +59,7 @@ void main() {
         translationId: 'web',
         note: 'Local',
         createdAt: DateTime(2026, 4, 19, 8),
+        updatedAt: DateTime(2026, 4, 19, 8, 30),
       );
       final remoteBookmark = VerseBookmark(
         book: 'John',
@@ -67,6 +68,7 @@ void main() {
         translationId: 'web',
         note: 'Remote newer',
         createdAt: DateTime(2026, 4, 19, 9),
+        updatedAt: DateTime(2026, 4, 19, 9, 30),
       );
 
       final merged = CloudSyncMerger.merge(
@@ -96,6 +98,67 @@ void main() {
         (bookmark) => bookmark.reference == 'John 3:16',
       );
       expect(mergedJohn.note, 'Remote newer');
+    });
+
+    test('keeps deletion when tombstone is newer than bookmark update', () {
+      final bookmarkId = 'web|John|3|16';
+      final merged = CloudSyncMerger.merge(
+        local: CloudSyncSnapshot(
+          syncedAt: DateTime(2026, 4, 19, 10),
+          user: UserModel(),
+          bookmarks: [
+            VerseBookmark(
+              book: 'John',
+              chapter: 3,
+              verse: 16,
+              translationId: 'web',
+              createdAt: DateTime(2026, 4, 19, 8),
+              updatedAt: DateTime(2026, 4, 19, 8, 20),
+            ),
+          ],
+        ),
+        remote: CloudSyncSnapshot(
+          syncedAt: DateTime(2026, 4, 19, 11),
+          user: UserModel(),
+          bookmarks: const [],
+          tombstones: {bookmarkId: DateTime(2026, 4, 19, 9)},
+        ),
+      );
+
+      expect(merged.bookmarks, isEmpty);
+      expect(merged.tombstones[bookmarkId], DateTime(2026, 4, 19, 9));
+    });
+
+    test('keeps bookmark when update is newer than tombstone', () {
+      final bookmarkId = 'web|John|3|16';
+      final merged = CloudSyncMerger.merge(
+        local: CloudSyncSnapshot(
+          syncedAt: DateTime(2026, 4, 19, 10),
+          user: UserModel(),
+          bookmarks: [
+            VerseBookmark(
+              book: 'John',
+              chapter: 3,
+              verse: 16,
+              translationId: 'web',
+              note: 'Restored locally',
+              createdAt: DateTime(2026, 4, 19, 8),
+              updatedAt: DateTime(2026, 4, 19, 10, 10),
+            ),
+          ],
+          tombstones: {bookmarkId: DateTime(2026, 4, 19, 9, 30)},
+        ),
+        remote: CloudSyncSnapshot(
+          syncedAt: DateTime(2026, 4, 19, 11),
+          user: UserModel(),
+          bookmarks: const [],
+          tombstones: {bookmarkId: DateTime(2026, 4, 19, 9)},
+        ),
+      );
+
+      expect(merged.bookmarks.length, 1);
+      expect(merged.bookmarks.single.note, 'Restored locally');
+      expect(merged.tombstones.containsKey(bookmarkId), isFalse);
     });
   });
 }

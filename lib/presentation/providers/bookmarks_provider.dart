@@ -7,17 +7,20 @@ class BookmarksProvider extends ChangeNotifier {
   final LocalDataSource _localDataSource;
   bool _isLoading = true;
   List<VerseBookmark> _bookmarks = const [];
+  Map<String, DateTime> _tombstones = const {};
 
   BookmarksProvider(this._localDataSource);
 
   bool get isLoading => _isLoading;
   List<VerseBookmark> get bookmarks => _bookmarks;
+  Map<String, DateTime> get tombstones => _tombstones;
 
   Future<void> loadBookmarks() async {
     _isLoading = true;
     notifyListeners();
 
     _bookmarks = _sortByNewest(_localDataSource.getBookmarks());
+    _tombstones = _localDataSource.getBookmarkTombstones();
 
     _isLoading = false;
     notifyListeners();
@@ -45,10 +48,18 @@ class BookmarksProvider extends ChangeNotifier {
 
   Future<void> addBookmark(VerseBookmark bookmark) async {
     if (_bookmarks.any((existing) => existing.id == bookmark.id)) {
+      if (_tombstones.containsKey(bookmark.id)) {
+        final updatedTombstones = Map<String, DateTime>.from(_tombstones)
+          ..remove(bookmark.id);
+        await _saveTombstones(updatedTombstones);
+      }
       return;
     }
 
     final updated = [..._bookmarks, bookmark];
+    final updatedTombstones = Map<String, DateTime>.from(_tombstones)
+      ..remove(bookmark.id);
+    await _saveTombstones(updatedTombstones);
     await _saveAndNotify(updated);
   }
 
@@ -64,6 +75,9 @@ class BookmarksProvider extends ChangeNotifier {
       return;
     }
 
+    final updatedTombstones = Map<String, DateTime>.from(_tombstones)
+      ..[id] = DateTime.now();
+    await _saveTombstones(updatedTombstones);
     await _saveAndNotify(updated);
   }
 
@@ -108,18 +122,34 @@ class BookmarksProvider extends ChangeNotifier {
     final updated = [..._bookmarks];
     final trimmed = note?.trim();
     if (trimmed == null || trimmed.isEmpty) {
-      updated[index] = updated[index].copyWith(clearNote: true);
+      updated[index] = updated[index].copyWith(
+        clearNote: true,
+        updatedAt: DateTime.now(),
+      );
     } else {
-      updated[index] = updated[index].copyWith(note: trimmed);
+      updated[index] = updated[index].copyWith(
+        note: trimmed,
+        updatedAt: DateTime.now(),
+      );
     }
 
+    final updatedTombstones = Map<String, DateTime>.from(_tombstones)
+      ..remove(id);
+    await _saveTombstones(updatedTombstones);
     await _saveAndNotify(updated);
   }
 
   Future<void> clearBookmarks() async {
     await _localDataSource.clearBookmarks();
+    await _localDataSource.clearBookmarkTombstones();
     _bookmarks = const [];
+    _tombstones = const {};
     notifyListeners();
+  }
+
+  Future<void> _saveTombstones(Map<String, DateTime> tombstones) async {
+    _tombstones = tombstones;
+    await _localDataSource.saveBookmarkTombstones(_tombstones);
   }
 
   Future<void> _saveAndNotify(List<VerseBookmark> updated) async {

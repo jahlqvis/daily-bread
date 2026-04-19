@@ -14,11 +14,13 @@ class CloudSyncSnapshot {
   final DateTime syncedAt;
   final UserModel user;
   final List<VerseBookmark> bookmarks;
+  final Map<String, DateTime> tombstones;
 
   const CloudSyncSnapshot({
     required this.syncedAt,
     required this.user,
     required this.bookmarks,
+    this.tombstones = const {},
   });
 
   Map<String, dynamic> toJson() {
@@ -26,6 +28,9 @@ class CloudSyncSnapshot {
       'syncedAt': syncedAt.toIso8601String(),
       'user': user.toJson(),
       'bookmarks': bookmarks.map((bookmark) => bookmark.toJson()).toList(),
+      'tombstones': tombstones.map(
+        (key, value) => MapEntry(key, value.toIso8601String()),
+      ),
     };
   }
 
@@ -33,6 +38,14 @@ class CloudSyncSnapshot {
     final bookmarksJson = (json['bookmarks'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .toList(growable: false);
+    final tombstonesJson = (json['tombstones'] as Map?) ?? const {};
+    final tombstones = <String, DateTime>{};
+    tombstonesJson.forEach((key, value) {
+      final parsed = DateTime.tryParse(value?.toString() ?? '');
+      if (parsed != null) {
+        tombstones[key.toString()] = parsed;
+      }
+    });
 
     return CloudSyncSnapshot(
       syncedAt:
@@ -44,8 +57,19 @@ class CloudSyncSnapshot {
       bookmarks: bookmarksJson
           .map(VerseBookmark.fromJson)
           .toList(growable: false),
+      tombstones: tombstones,
     );
   }
+}
+
+class BookmarkMergeResult {
+  final List<VerseBookmark> bookmarks;
+  final Map<String, DateTime> tombstones;
+
+  const BookmarkMergeResult({
+    required this.bookmarks,
+    required this.tombstones,
+  });
 }
 
 class CloudSyncMerger {
@@ -62,11 +86,18 @@ class CloudSyncMerger {
     final mergedSyncedAt = local.syncedAt.isAfter(remote.syncedAt)
         ? local.syncedAt
         : remote.syncedAt;
+    final bookmarkMerge = mergeBookmarks(
+      local.bookmarks,
+      remote.bookmarks,
+      local.tombstones,
+      remote.tombstones,
+    );
 
     return CloudSyncSnapshot(
       syncedAt: mergedSyncedAt,
       user: mergeUsers(local.user, remote.user),
-      bookmarks: mergeBookmarks(local.bookmarks, remote.bookmarks),
+      bookmarks: bookmarkMerge.bookmarks,
+      tombstones: bookmarkMerge.tombstones,
     );
   }
 
@@ -105,31 +136,87 @@ class CloudSyncMerger {
     );
   }
 
-  static List<VerseBookmark> mergeBookmarks(
+  static BookmarkMergeResult mergeBookmarks(
     List<VerseBookmark> local,
     List<VerseBookmark> remote,
+    Map<String, DateTime> localTombstones,
+    Map<String, DateTime> remoteTombstones,
   ) {
     final byId = <String, VerseBookmark>{};
+    final mergedTombstones = <String, DateTime>{};
     final localById = {for (final bookmark in local) bookmark.id: bookmark};
     final remoteById = {for (final bookmark in remote) bookmark.id: bookmark};
-    final allIds = <String>{...localById.keys, ...remoteById.keys};
+    final allIds = <String>{
+      ...localById.keys,
+      ...remoteById.keys,
+      ...localTombstones.keys,
+      ...remoteTombstones.keys,
+    };
 
     for (final id in allIds) {
       final localBookmark = localById[id];
       final remoteBookmark = remoteById[id];
+      final localDeletedAt = localTombstones[id];
+      final remoteDeletedAt = remoteTombstones[id];
 
-      if (localBookmark != null && remoteBookmark != null) {
-        byId[id] = remoteBookmark.createdAt.isAfter(localBookmark.createdAt)
-            ? remoteBookmark
-            : localBookmark;
-      } else {
-        byId[id] = localBookmark ?? remoteBookmark!;
+      final localEvent = _resolveBookmarkEvent(localBookmark, localDeletedAt);
+      final remoteEvent = _resolveBookmarkEvent(
+        remoteBookmark,
+        remoteDeletedAt,
+      );
+      final winner = _pickBookmarkEventWinner(localEvent, remoteEvent);
+
+      if (winner.bookmark != null) {
+        byId[id] = winner.bookmark!;
+      }
+      if (winner.deletedAt != null) {
+        mergedTombstones[id] = winner.deletedAt!;
       }
     }
 
     final merged = byId.values.toList(growable: false)
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return merged;
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return BookmarkMergeResult(bookmarks: merged, tombstones: mergedTombstones);
+  }
+
+  static _BookmarkEvent _resolveBookmarkEvent(
+    VerseBookmark? bookmark,
+    DateTime? deletedAt,
+  ) {
+    if (bookmark == null && deletedAt == null) {
+      return _BookmarkEvent.deleted(DateTime.fromMillisecondsSinceEpoch(0));
+    }
+    if (bookmark == null) {
+      return _BookmarkEvent.deleted(deletedAt!);
+    }
+    if (deletedAt == null) {
+      return _BookmarkEvent.active(bookmark);
+    }
+
+    if (deletedAt.isAfter(bookmark.updatedAt) ||
+        deletedAt.isAtSameMomentAs(bookmark.updatedAt)) {
+      return _BookmarkEvent.deleted(deletedAt);
+    }
+
+    return _BookmarkEvent.active(bookmark);
+  }
+
+  static _BookmarkEvent _pickBookmarkEventWinner(
+    _BookmarkEvent local,
+    _BookmarkEvent remote,
+  ) {
+    if (local.timestamp.isAfter(remote.timestamp)) {
+      return local;
+    }
+    if (remote.timestamp.isAfter(local.timestamp)) {
+      return remote;
+    }
+
+    if (local.deletedAt != null || remote.deletedAt != null) {
+      return local.deletedAt != null ? local : remote;
+    }
+
+    return local;
   }
 
   static DateTime? _maxDate(DateTime? a, DateTime? b) {
@@ -150,6 +237,34 @@ class CloudSyncMerger {
       return true;
     }
     return remote.isAfter(local);
+  }
+}
+
+class _BookmarkEvent {
+  final VerseBookmark? bookmark;
+  final DateTime timestamp;
+  final DateTime? deletedAt;
+
+  const _BookmarkEvent._({
+    required this.bookmark,
+    required this.timestamp,
+    required this.deletedAt,
+  });
+
+  factory _BookmarkEvent.active(VerseBookmark bookmark) {
+    return _BookmarkEvent._(
+      bookmark: bookmark,
+      timestamp: bookmark.updatedAt,
+      deletedAt: null,
+    );
+  }
+
+  factory _BookmarkEvent.deleted(DateTime deletedAt) {
+    return _BookmarkEvent._(
+      bookmark: null,
+      timestamp: deletedAt,
+      deletedAt: deletedAt,
+    );
   }
 }
 
@@ -265,11 +380,13 @@ class FirebaseCloudSyncService implements CloudSyncService {
         syncedAt: _nowProvider(),
         user: merged.user,
         bookmarks: merged.bookmarks,
+        tombstones: merged.tombstones,
       );
 
       await _saveRemoteSnapshot(user.uid, syncedSnapshot);
       await _localDataSource.saveUser(syncedSnapshot.user);
       await _localDataSource.saveBookmarks(syncedSnapshot.bookmarks);
+      await _localDataSource.saveBookmarkTombstones(syncedSnapshot.tombstones);
       await _localDataSource.saveCloudSnapshot(
         jsonEncode(syncedSnapshot.toJson()),
       );
@@ -316,17 +433,24 @@ class FirebaseCloudSyncService implements CloudSyncService {
 
     final bookmarksSnapshot = await userDoc.collection('bookmarks').get();
     final bookmarks = <VerseBookmark>[];
+    final tombstones = <String, DateTime>{};
     for (final doc in bookmarksSnapshot.docs) {
       final data = doc.data();
       final deletedAt = data['deletedAt'];
       if (deletedAt != null) {
+        if (deletedAt is Timestamp) {
+          tombstones[doc.id] = deletedAt.toDate();
+        }
         continue;
       }
 
       try {
         final bookmarkJson = Map<String, dynamic>.from(data)
-          ..remove('updatedAt')
           ..remove('deletedAt');
+        final updatedAt = data['updatedAt'];
+        if (updatedAt is Timestamp) {
+          bookmarkJson['updatedAt'] = updatedAt.toDate().toIso8601String();
+        }
         bookmarks.add(VerseBookmark.fromJson(bookmarkJson));
       } catch (_) {
         continue;
@@ -337,6 +461,7 @@ class FirebaseCloudSyncService implements CloudSyncService {
       syncedAt: syncAt,
       user: UserModel.fromJson(userJson),
       bookmarks: bookmarks,
+      tombstones: tombstones,
     );
   }
 
@@ -356,14 +481,41 @@ class FirebaseCloudSyncService implements CloudSyncService {
 
     for (final bookmark in snapshot.bookmarks) {
       final bookmarkDoc = userDoc.collection('bookmarks').doc(bookmark.id);
+      final updatedAt = Timestamp.fromDate(bookmark.updatedAt.toUtc());
       batch.set(bookmarkDoc, {
         ...bookmark.toJson(),
-        'updatedAt': syncTime,
+        'updatedAt': updatedAt,
         'deletedAt': null,
       }, SetOptions(merge: true));
     }
 
+    for (final entry in snapshot.tombstones.entries) {
+      final bookmarkDoc = userDoc.collection('bookmarks').doc(entry.key);
+      final payload = <String, dynamic>{
+        'updatedAt': Timestamp.fromDate(entry.value.toUtc()),
+        'deletedAt': Timestamp.fromDate(entry.value.toUtc()),
+      };
+      final decomposed = _decomposeBookmarkId(entry.key);
+      if (decomposed != null) {
+        payload.addAll(decomposed);
+      }
+      batch.set(bookmarkDoc, payload, SetOptions(merge: true));
+    }
+
     await batch.commit();
+  }
+
+  Map<String, dynamic>? _decomposeBookmarkId(String id) {
+    final parts = id.split('|');
+    if (parts.length != 4) {
+      return null;
+    }
+    return {
+      'translationId': parts[0],
+      'book': parts[1],
+      'chapter': int.tryParse(parts[2]) ?? 0,
+      'verse': int.tryParse(parts[3]) ?? 0,
+    };
   }
 
   Map<String, dynamic> _toStringKeyMap(Object? value) {

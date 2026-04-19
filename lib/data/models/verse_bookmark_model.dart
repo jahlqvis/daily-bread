@@ -5,6 +5,7 @@ class VerseBookmark {
   final String translationId;
   final String? note;
   final DateTime createdAt;
+  final DateTime updatedAt;
 
   VerseBookmark({
     required this.book,
@@ -13,7 +14,8 @@ class VerseBookmark {
     required this.translationId,
     this.note,
     required this.createdAt,
-  });
+    DateTime? updatedAt,
+  }) : updatedAt = updatedAt ?? createdAt;
 
   String get id => '$translationId|$book|$chapter|$verse';
 
@@ -27,6 +29,7 @@ class VerseBookmark {
     String? note,
     bool clearNote = false,
     DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return VerseBookmark(
       book: book ?? this.book,
@@ -35,6 +38,7 @@ class VerseBookmark {
       translationId: translationId ?? this.translationId,
       note: clearNote ? null : (note ?? this.note),
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -46,6 +50,7 @@ class VerseBookmark {
       'translationId': translationId,
       'note': note,
       'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
     };
   }
 
@@ -57,6 +62,7 @@ class VerseBookmark {
       translationId: json['translationId'] as String? ?? '',
       note: json['note'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? ''),
     );
   }
 }

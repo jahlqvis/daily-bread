@@ -85,6 +85,40 @@ void main() {
         translationId: 'kjv',
       );
       expect(provider.bookmarks, isEmpty);
+      expect(provider.tombstones['kjv|Psalms|23|1'], isNotNull);
+    });
+
+    test('re-adding removed bookmark clears tombstone', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final provider = BookmarksProvider(LocalDataSource(prefs));
+      await provider.loadBookmarks();
+
+      await provider.toggleBookmark(
+        book: 'Psalms',
+        chapter: 23,
+        verse: 1,
+        translationId: 'kjv',
+        createdAt: DateTime(2026, 4, 16, 13),
+      );
+      await provider.toggleBookmark(
+        book: 'Psalms',
+        chapter: 23,
+        verse: 1,
+        translationId: 'kjv',
+      );
+
+      expect(provider.tombstones['kjv|Psalms|23|1'], isNotNull);
+
+      await provider.toggleBookmark(
+        book: 'Psalms',
+        chapter: 23,
+        verse: 1,
+        translationId: 'kjv',
+      );
+
+      expect(provider.bookmarks.length, 1);
+      expect(provider.tombstones.containsKey('kjv|Psalms|23|1'), isFalse);
     });
 
     test('updateNote updates and clears note for existing bookmark', () async {

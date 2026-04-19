@@ -33,6 +33,7 @@ class AppServicesProvider extends ChangeNotifier {
   Future<void> syncNow({
     required UserModel user,
     required List<VerseBookmark> bookmarks,
+    Map<String, DateTime> tombstones = const {},
   }) async {
     _isSyncing = true;
     _syncMessage = null;
@@ -42,6 +43,7 @@ class AppServicesProvider extends ChangeNotifier {
       syncedAt: DateTime.now(),
       user: user,
       bookmarks: bookmarks,
+      tombstones: tombstones,
     );
     try {
       _lastSyncedAt = await _cloudSyncService.syncSnapshot(snapshot);
