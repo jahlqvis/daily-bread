@@ -350,6 +350,8 @@ class HomeScreen extends StatelessWidget {
                               user: userProvider.user,
                               bookmarks: bookmarksProvider.bookmarks,
                             );
+                            await userProvider.loadUser();
+                            await bookmarksProvider.loadBookmarks();
 
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
