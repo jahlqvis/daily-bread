@@ -13,6 +13,7 @@ import 'presentation/providers/bookmarks_provider.dart';
 import 'presentation/providers/app_services_provider.dart';
 import 'presentation/screens/home_screen.dart';
 import 'services/cloud/cloud_sync_service.dart';
+import 'services/cloud/firebase_backend_config.dart';
 import 'services/notifications/daily_reminder_service.dart';
 
 void main() async {
@@ -22,12 +23,18 @@ void main() async {
   final localDataSource = LocalDataSource(prefs);
   final bibleDataSource = BibleDataSource();
   final userRepository = UserRepository(localDataSource);
-  final cloudSyncService = LocalCloudSyncService(localDataSource);
+  final localCloudSyncService = LocalCloudSyncService(localDataSource);
+  final cloudSyncService = FirebaseCloudSyncService(
+    localDataSource: localDataSource,
+    config: FirebaseBackendConfig.fromEnvironment(),
+    fallback: localCloudSyncService,
+  );
   final notificationsPlugin = FlutterLocalNotificationsPlugin();
   final dailyReminderService = LocalNotificationReminderService(
     localDataSource,
     notificationsPlugin,
   );
+  await cloudSyncService.initialize();
   await dailyReminderService.initialize();
 
   runApp(

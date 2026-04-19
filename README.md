@@ -61,8 +61,25 @@ The output lives in `build/web/` and has been verified locally.
 - Job 1 (`Analyze, Test & Web Build`) runs on Ubuntu, executes `flutter pub get`, `flutter analyze`, `flutter test`, and `flutter build web --release` with cached pub packages.
 - Job 2 (`iOS Simulator Build`) runs on `macos-14`, caches CocoaPods, installs pods, and runs `xcodebuild … CODE_SIGNING_ALLOWED=NO` to ensure the Runner target continues to build despite macOS 15/Xcode 26 codesign restrictions.
 
+## Firebase cloud sync MVP
+
+- The app now supports a Firebase-backed sync path with anonymous auth and Firestore upload during `Sync now`.
+- If Firebase is not configured, the app automatically falls back to local backup mode.
+- Configure Firebase using `--dart-define` values (core values are required):
+
+```bash
+~/flutter/bin/flutter run \
+  --dart-define=FIREBASE_API_KEY=... \
+  --dart-define=FIREBASE_PROJECT_ID=... \
+  --dart-define=FIREBASE_MESSAGING_SENDER_ID=... \
+  --dart-define=FIREBASE_ANDROID_APP_ID=... \
+  --dart-define=FIREBASE_IOS_APP_ID=...
+```
+
+- Optional defines: `FIREBASE_WEB_APP_ID`, `FIREBASE_STORAGE_BUCKET`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_IOS_BUNDLE_ID`.
+
 ## Next steps
 
-1. Add push notifications and Firebase/cloud sync for streaks.
+1. Add pull/merge sync flow so remote snapshots can be applied across devices.
 2. Expand the translation selector with reading plans or translation-specific study notes.
 3. Prepare Android + App Store distribution tooling once Apple resolves the macOS 15 signing bug (or after downgrading to Xcode 15).

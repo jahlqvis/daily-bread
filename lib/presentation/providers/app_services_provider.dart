@@ -18,6 +18,7 @@ class AppServicesProvider extends ChangeNotifier {
   bool _reminderEnabled = false;
   String _reminderTime = '08:00';
   String? _reminderMessage;
+  String? _syncMessage;
 
   bool get isSyncing => _isSyncing;
   DateTime? get lastSyncedAt => _lastSyncedAt;
@@ -25,12 +26,16 @@ class AppServicesProvider extends ChangeNotifier {
   String get reminderTime => _reminderTime;
   bool get reminderSupported => _dailyReminderService.isSupported;
   String? get reminderMessage => _reminderMessage;
+  String? get syncMessage => _syncMessage;
+  bool get cloudSyncAvailable => _cloudSyncService.isAvailable;
+  String get cloudBackendLabel => _cloudSyncService.backendLabel;
 
   Future<void> syncNow({
     required UserModel user,
     required List<VerseBookmark> bookmarks,
   }) async {
     _isSyncing = true;
+    _syncMessage = null;
     notifyListeners();
 
     final snapshot = CloudSyncSnapshot(
@@ -38,9 +43,21 @@ class AppServicesProvider extends ChangeNotifier {
       user: user,
       bookmarks: bookmarks,
     );
-    _lastSyncedAt = await _cloudSyncService.syncSnapshot(snapshot);
+    try {
+      _lastSyncedAt = await _cloudSyncService.syncSnapshot(snapshot);
+      _syncMessage = cloudSyncAvailable
+          ? 'Synced to Firebase successfully'
+          : 'Firebase not configured. Saved local backup instead.';
+    } catch (_) {
+      _syncMessage = 'Sync failed. Please try again.';
+    }
 
     _isSyncing = false;
+    notifyListeners();
+  }
+
+  void clearSyncMessage() {
+    _syncMessage = null;
     notifyListeners();
   }
 

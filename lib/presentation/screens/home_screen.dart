@@ -320,6 +320,7 @@ class HomeScreen extends StatelessWidget {
         final syncedLabel = syncedAt == null
             ? 'Not synced yet'
             : 'Last synced ${DateFormat('MMM d, HH:mm').format(syncedAt)}';
+        final backendLabel = servicesProvider.cloudBackendLabel;
 
         return Card(
           child: Padding(
@@ -332,6 +333,11 @@ class HomeScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
+                Text(
+                  'Backend: $backendLabel',
+                  style: TextStyle(color: Colors.grey[700]),
+                ),
+                const SizedBox(height: 4),
                 Text(syncedLabel, style: TextStyle(color: Colors.grey[700])),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -347,11 +353,15 @@ class HomeScreen extends StatelessWidget {
 
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Local cloud snapshot updated'),
+                                SnackBar(
+                                  content: Text(
+                                    servicesProvider.syncMessage ??
+                                        'Sync completed',
+                                  ),
                                   duration: Duration(seconds: 2),
                                 ),
                               );
+                              servicesProvider.clearSyncMessage();
                             }
                           },
                     icon: servicesProvider.isSyncing
