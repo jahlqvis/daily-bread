@@ -373,32 +373,60 @@ class HomeScreen extends StatelessWidget {
                   subtitle: Text(
                     servicesProvider.reminderSupported
                         ? 'Reminder set for ${servicesProvider.reminderTime}'
-                        : 'Preference is saved now. Native notifications will be wired next.',
+                        : 'Reminders are unavailable on this platform.',
                   ),
                   value: servicesProvider.reminderEnabled,
-                  onChanged: (value) async {
-                    await servicesProvider.setReminderEnabled(value);
-                  },
+                  onChanged: servicesProvider.reminderSupported
+                      ? (value) async {
+                          await servicesProvider.setReminderEnabled(value);
+                          if (context.mounted &&
+                              servicesProvider.reminderMessage != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  servicesProvider.reminderMessage!,
+                                ),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                            servicesProvider.clearReminderMessage();
+                          }
+                        }
+                      : null,
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
-                    onPressed: () async {
-                      final initialTime = _parseReminderTime(
-                        servicesProvider.reminderTime,
-                      );
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: initialTime,
-                      );
-                      if (picked == null) {
-                        return;
-                      }
+                    onPressed: servicesProvider.reminderSupported
+                        ? () async {
+                            final initialTime = _parseReminderTime(
+                              servicesProvider.reminderTime,
+                            );
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: initialTime,
+                            );
+                            if (picked == null) {
+                              return;
+                            }
 
-                      final hh = picked.hour.toString().padLeft(2, '0');
-                      final mm = picked.minute.toString().padLeft(2, '0');
-                      await servicesProvider.setReminderTime('$hh:$mm');
-                    },
+                            final hh = picked.hour.toString().padLeft(2, '0');
+                            final mm = picked.minute.toString().padLeft(2, '0');
+                            await servicesProvider.setReminderTime('$hh:$mm');
+                            if (context.mounted &&
+                                servicesProvider.reminderMessage != null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    servicesProvider.reminderMessage!,
+                                  ),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                              servicesProvider.clearReminderMessage();
+                            }
+                          }
+                        : null,
                     icon: const Icon(Icons.schedule),
                     label: Text(
                       'Reminder time: ${servicesProvider.reminderTime}',

@@ -17,12 +17,14 @@ class AppServicesProvider extends ChangeNotifier {
   DateTime? _lastSyncedAt;
   bool _reminderEnabled = false;
   String _reminderTime = '08:00';
+  String? _reminderMessage;
 
   bool get isSyncing => _isSyncing;
   DateTime? get lastSyncedAt => _lastSyncedAt;
   bool get reminderEnabled => _reminderEnabled;
   String get reminderTime => _reminderTime;
   bool get reminderSupported => _dailyReminderService.isSupported;
+  String? get reminderMessage => _reminderMessage;
 
   Future<void> syncNow({
     required UserModel user,
@@ -43,14 +45,35 @@ class AppServicesProvider extends ChangeNotifier {
   }
 
   Future<void> setReminderEnabled(bool enabled) async {
-    await _dailyReminderService.setEnabled(enabled);
-    _reminderEnabled = _dailyReminderService.isEnabled;
+    try {
+      await _dailyReminderService.setEnabled(enabled);
+      _reminderEnabled = _dailyReminderService.isEnabled;
+      _reminderMessage = _reminderEnabled
+          ? 'Daily reminder enabled at $_reminderTime'
+          : 'Daily reminder disabled';
+    } catch (_) {
+      _reminderEnabled = _dailyReminderService.isEnabled;
+      _reminderMessage =
+          'Could not enable reminders. Please allow notifications in Settings.';
+    }
     notifyListeners();
   }
 
   Future<void> setReminderTime(String hhmm) async {
-    await _dailyReminderService.setReminderTime(hhmm);
-    _reminderTime = _dailyReminderService.reminderTime;
+    try {
+      await _dailyReminderService.setReminderTime(hhmm);
+      _reminderTime = _dailyReminderService.reminderTime;
+      _reminderMessage = _reminderEnabled
+          ? 'Reminder moved to $_reminderTime'
+          : 'Reminder time saved to $_reminderTime';
+    } catch (_) {
+      _reminderMessage = 'Could not update reminder time right now.';
+    }
+    notifyListeners();
+  }
+
+  void clearReminderMessage() {
+    _reminderMessage = null;
     notifyListeners();
   }
 

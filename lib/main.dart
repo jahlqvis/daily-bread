@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/theme/app_theme.dart';
@@ -22,7 +23,12 @@ void main() async {
   final bibleDataSource = BibleDataSource();
   final userRepository = UserRepository(localDataSource);
   final cloudSyncService = LocalCloudSyncService(localDataSource);
-  final dailyReminderService = LocalReminderService(localDataSource);
+  final notificationsPlugin = FlutterLocalNotificationsPlugin();
+  final dailyReminderService = LocalNotificationReminderService(
+    localDataSource,
+    notificationsPlugin,
+  );
+  await dailyReminderService.initialize();
 
   runApp(
     MultiProvider(
