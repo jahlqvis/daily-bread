@@ -5,7 +5,7 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
-exports.syncUserState = onCall(async (request) => {
+exports.syncUserState = onCall({ region: "us-central1", invoker: "public" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Authentication is required.");
   }
