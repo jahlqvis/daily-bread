@@ -160,5 +160,73 @@ void main() {
       expect(merged.bookmarks.single.note, 'Restored locally');
       expect(merged.tombstones.containsKey(bookmarkId), isFalse);
     });
+
+    test('out-of-order device sync converges on newest delete', () {
+      final bookmarkId = 'web|John|3|16';
+      final deviceADelete = CloudSyncSnapshot(
+        syncedAt: DateTime(2026, 4, 19, 11),
+        user: UserModel(),
+        bookmarks: const [],
+        tombstones: {bookmarkId: DateTime(2026, 4, 19, 11)},
+      );
+
+      final staleDeviceBEdit = CloudSyncSnapshot(
+        syncedAt: DateTime(2026, 4, 19, 11, 5),
+        user: UserModel(),
+        bookmarks: [
+          VerseBookmark(
+            book: 'John',
+            chapter: 3,
+            verse: 16,
+            translationId: 'web',
+            note: 'B stale edit',
+            createdAt: DateTime(2026, 4, 19, 9),
+            updatedAt: DateTime(2026, 4, 19, 10, 30),
+          ),
+        ],
+      );
+
+      final merged = CloudSyncMerger.merge(
+        local: staleDeviceBEdit,
+        remote: deviceADelete,
+      );
+
+      expect(merged.bookmarks, isEmpty);
+      expect(merged.tombstones[bookmarkId], DateTime(2026, 4, 19, 11));
+    });
+
+    test('stale local reupload cannot resurrect remote tombstone', () {
+      final bookmarkId = 'web|Romans|8|1';
+      final staleLocal = CloudSyncSnapshot(
+        syncedAt: DateTime(2026, 4, 20, 8),
+        user: UserModel(),
+        bookmarks: [
+          VerseBookmark(
+            book: 'Romans',
+            chapter: 8,
+            verse: 1,
+            translationId: 'web',
+            note: 'Old local copy',
+            createdAt: DateTime(2026, 4, 18, 8),
+            updatedAt: DateTime(2026, 4, 18, 8, 30),
+          ),
+        ],
+      );
+
+      final remoteDeleted = CloudSyncSnapshot(
+        syncedAt: DateTime(2026, 4, 20, 8, 5),
+        user: UserModel(),
+        bookmarks: const [],
+        tombstones: {bookmarkId: DateTime(2026, 4, 19, 12)},
+      );
+
+      final merged = CloudSyncMerger.merge(
+        local: staleLocal,
+        remote: remoteDeleted,
+      );
+
+      expect(merged.bookmarks, isEmpty);
+      expect(merged.tombstones[bookmarkId], DateTime(2026, 4, 19, 12));
+    });
   });
 }

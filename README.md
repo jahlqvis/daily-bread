@@ -77,9 +77,15 @@ The output lives in `build/web/` and has been verified locally.
 ```
 
 - Optional defines: `FIREBASE_WEB_APP_ID`, `FIREBASE_STORAGE_BUCKET`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_IOS_BUNDLE_ID`.
+- Firestore rules are defined in `firestore.rules` and referenced by `firebase.json`.
+- Deploy/update rules with Firebase CLI:
+
+```bash
+firebase deploy --only firestore:rules
+```
 
 ## Next steps
 
-1. Add server-side conflict handling and tombstones for bookmark deletions across devices.
+1. Use server-side conflict resolution in Cloud Functions to remove remaining client clock skew edge cases.
 2. Expand the translation selector with reading plans or translation-specific study notes.
 3. Prepare Android + App Store distribution tooling once Apple resolves the macOS 15 signing bug (or after downgrading to Xcode 15).

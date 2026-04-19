@@ -1,0 +1,84 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function hasKeysOnly(allowedKeys) {
+      return request.resource.data.keys().hasOnly(allowedKeys);
+    }
+
+    function isUserShape(value) {
+      return value is map
+        && value.currentStreak is int
+        && value.longestStreak is int
+        && value.totalXp is int
+        && value.level is int
+        && value.badges is list
+        && value.readingProgress is map
+        && value.streakFreezes is int
+        && (
+          !('lastReadDate' in value)
+          || value.lastReadDate == null
+          || value.lastReadDate is string
+        );
+    }
+
+    function isUserDocShape() {
+      return hasKeysOnly(['user', 'lastClientSyncAt', 'updatedAt'])
+        && request.resource.data.user is map
+        && isUserShape(request.resource.data.user)
+        && request.resource.data.lastClientSyncAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function isBookmarkShape() {
+      return hasKeysOnly([
+          'translationId',
+          'book',
+          'chapter',
+          'verse',
+          'note',
+          'createdAt',
+          'updatedAt',
+          'deletedAt',
+        ])
+        && request.resource.data.translationId is string
+        && request.resource.data.book is string
+        && request.resource.data.chapter is int
+        && request.resource.data.chapter > 0
+        && request.resource.data.verse is int
+        && request.resource.data.verse > 0
+        && (
+          !('note' in request.resource.data)
+          || request.resource.data.note == null
+          || request.resource.data.note is string
+        )
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is timestamp
+        && (
+          !('deletedAt' in request.resource.data)
+          || request.resource.data.deletedAt == null
+          || request.resource.data.deletedAt is timestamp
+        );
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && isUserDocShape();
+      allow delete: if false;
+
+      match /bookmarks/{bookmarkId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isBookmarkShape();
+        allow delete: if false;
+      }
+    }
+  }
+}

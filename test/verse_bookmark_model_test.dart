@@ -20,6 +20,7 @@ void main() {
     expect(decoded.translationId, bookmark.translationId);
     expect(decoded.note, bookmark.note);
     expect(decoded.createdAt, bookmark.createdAt);
+    expect(decoded.updatedAt, bookmark.createdAt);
     expect(decoded.id, bookmark.id);
     expect(decoded.reference, 'John 3:16');
   });
@@ -39,5 +40,19 @@ void main() {
 
     expect(updated.note, 'The Lord is my shepherd');
     expect(cleared.note, isNull);
+  });
+
+  test('fromJson preserves updatedAt when provided', () {
+    final bookmark = VerseBookmark.fromJson({
+      'book': 'Romans',
+      'chapter': 8,
+      'verse': 1,
+      'translationId': 'web',
+      'note': null,
+      'createdAt': '2026-04-20T08:00:00.000',
+      'updatedAt': '2026-04-20T10:30:00.000',
+    });
+
+    expect(bookmark.updatedAt, DateTime.parse('2026-04-20T10:30:00.000'));
   });
 }
