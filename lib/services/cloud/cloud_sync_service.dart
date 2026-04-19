@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -310,6 +311,7 @@ class FirebaseCloudSyncService implements CloudSyncService {
   final CloudSyncService _fallback;
   final FirebaseAuth _firebaseAuth;
   final FirebaseFirestore _firebaseFirestore;
+  final FirebaseFunctions _firebaseFunctions;
 
   bool _initialized = false;
   bool _isAvailable = false;
@@ -321,12 +323,14 @@ class FirebaseCloudSyncService implements CloudSyncService {
     required CloudSyncService fallback,
     FirebaseAuth? firebaseAuth,
     FirebaseFirestore? firebaseFirestore,
+    FirebaseFunctions? firebaseFunctions,
     DateTime Function()? nowProvider,
   }) : _localDataSource = localDataSource,
        _config = config,
        _fallback = fallback,
        _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance,
        _firebaseFirestore = firebaseFirestore ?? FirebaseFirestore.instance,
+       _firebaseFunctions = firebaseFunctions ?? FirebaseFunctions.instance,
        _nowProvider = nowProvider ?? DateTime.now;
 
   @override
@@ -373,28 +377,61 @@ class FirebaseCloudSyncService implements CloudSyncService {
     }
 
     try {
-      final user = await _ensureSignedIn();
-      final remote = await _loadRemoteSnapshot(user.uid);
-      final merged = CloudSyncMerger.merge(local: snapshot, remote: remote);
-      final syncedSnapshot = CloudSyncSnapshot(
-        syncedAt: _nowProvider(),
-        user: merged.user,
-        bookmarks: merged.bookmarks,
-        tombstones: merged.tombstones,
-      );
+      await _ensureSignedIn();
 
-      await _saveRemoteSnapshot(user.uid, syncedSnapshot);
-      await _localDataSource.saveUser(syncedSnapshot.user);
-      await _localDataSource.saveBookmarks(syncedSnapshot.bookmarks);
-      await _localDataSource.saveBookmarkTombstones(syncedSnapshot.tombstones);
-      await _localDataSource.saveCloudSnapshot(
-        jsonEncode(syncedSnapshot.toJson()),
-      );
-      await _localDataSource.saveCloudLastSyncedAt(syncedSnapshot.syncedAt);
-      return syncedSnapshot.syncedAt;
+      final mergedSnapshot = await _syncWithCloudFunction(snapshot);
+      if (mergedSnapshot != null) {
+        await _persistSyncedSnapshot(mergedSnapshot);
+        return mergedSnapshot.syncedAt;
+      }
+
+      final firestoreSnapshot = await _syncWithClientMerge(snapshot);
+      await _persistSyncedSnapshot(firestoreSnapshot);
+      return firestoreSnapshot.syncedAt;
     } catch (_) {
       return _fallback.syncSnapshot(snapshot);
     }
+  }
+
+  Future<CloudSyncSnapshot?> _syncWithCloudFunction(
+    CloudSyncSnapshot snapshot,
+  ) async {
+    try {
+      final callable = _firebaseFunctions.httpsCallable('syncUserState');
+      final result = await callable.call({'snapshot': snapshot.toJson()});
+      final data = _toStringKeyMap(result.data);
+      if (data.isEmpty) {
+        return null;
+      }
+
+      return CloudSyncSnapshot.fromJson(data);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<CloudSyncSnapshot> _syncWithClientMerge(
+    CloudSyncSnapshot snapshot,
+  ) async {
+    final user = await _ensureSignedIn();
+    final remote = await _loadRemoteSnapshot(user.uid);
+    final merged = CloudSyncMerger.merge(local: snapshot, remote: remote);
+    final syncedSnapshot = CloudSyncSnapshot(
+      syncedAt: _nowProvider(),
+      user: merged.user,
+      bookmarks: merged.bookmarks,
+      tombstones: merged.tombstones,
+    );
+    await _saveRemoteSnapshot(user.uid, syncedSnapshot);
+    return syncedSnapshot;
+  }
+
+  Future<void> _persistSyncedSnapshot(CloudSyncSnapshot snapshot) async {
+    await _localDataSource.saveUser(snapshot.user);
+    await _localDataSource.saveBookmarks(snapshot.bookmarks);
+    await _localDataSource.saveBookmarkTombstones(snapshot.tombstones);
+    await _localDataSource.saveCloudSnapshot(jsonEncode(snapshot.toJson()));
+    await _localDataSource.saveCloudLastSyncedAt(snapshot.syncedAt);
   }
 
   @override

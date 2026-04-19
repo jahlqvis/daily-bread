@@ -5,6 +5,28 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('CloudSyncMerger', () {
+    test('snapshot json roundtrip preserves tombstones and updatedAt', () {
+      final snapshot = CloudSyncSnapshot(
+        syncedAt: DateTime(2026, 4, 21, 8),
+        user: UserModel(currentStreak: 2),
+        bookmarks: [
+          VerseBookmark(
+            book: 'John',
+            chapter: 3,
+            verse: 16,
+            translationId: 'web',
+            createdAt: DateTime(2026, 4, 21, 7),
+            updatedAt: DateTime(2026, 4, 21, 7, 30),
+          ),
+        ],
+        tombstones: {'web|Romans|8|1': DateTime(2026, 4, 20, 6)},
+      );
+
+      final decoded = CloudSyncSnapshot.fromJson(snapshot.toJson());
+      expect(decoded.bookmarks.single.updatedAt, DateTime(2026, 4, 21, 7, 30));
+      expect(decoded.tombstones['web|Romans|8|1'], DateTime(2026, 4, 20, 6));
+    });
+
     test('merges user progress, badges, and newest streak fields', () {
       final local = CloudSyncSnapshot(
         syncedAt: DateTime(2026, 4, 19, 10),

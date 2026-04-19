@@ -84,6 +84,14 @@ The output lives in `build/web/` and has been verified locally.
 firebase deploy --only firestore:rules
 ```
 
+- Cloud Functions source lives in `functions/` with callable `syncUserState` as the server-side conflict authority for sync.
+- Install function dependencies and deploy:
+
+```bash
+cd functions && npm install
+firebase deploy --only functions
+```
+
 ## Next steps
 
 1. Use server-side conflict resolution in Cloud Functions to remove remaining client clock skew edge cases.
