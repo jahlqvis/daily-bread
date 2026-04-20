@@ -4,8 +4,21 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 admin.initializeApp();
 
 const db = admin.firestore();
+const MAX_NOTE_LENGTH = 1000;
+const MAX_BOOKMARKS_PER_SYNC = 2000;
+const MAX_TOMBSTONES_PER_SYNC = 5000;
+const ALLOWED_USER_KEYS = new Set([
+  "currentStreak",
+  "longestStreak",
+  "totalXp",
+  "level",
+  "badges",
+  "lastReadDate",
+  "readingProgress",
+  "streakFreezes",
+]);
 
-exports.syncUserState = onCall({ region: "us-central1", invoker: "public" }, async (request) => {
+exports.syncUserState = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Authentication is required.");
   }
@@ -13,6 +26,7 @@ exports.syncUserState = onCall({ region: "us-central1", invoker: "public" }, asy
   const uid = request.auth.uid;
   const payload = toObject(request.data);
   const incoming = parseSnapshot(payload.snapshot);
+  validateSnapshot(incoming);
 
   const remote = await loadRemoteSnapshot(uid);
   const merged = mergeSnapshots(incoming, remote);
@@ -44,6 +58,35 @@ function parseSnapshot(rawSnapshot) {
     bookmarks,
     tombstones,
   };
+}
+
+function validateSnapshot(snapshot) {
+  if (snapshot.bookmarks.length > MAX_BOOKMARKS_PER_SYNC) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Too many bookmarks in one sync payload (max ${MAX_BOOKMARKS_PER_SYNC}).`,
+    );
+  }
+
+  if (Object.keys(snapshot.tombstones).length > MAX_TOMBSTONES_PER_SYNC) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Too many tombstones in one sync payload (max ${MAX_TOMBSTONES_PER_SYNC}).`,
+    );
+  }
+
+  if (!hasOnlyAllowedKeys(snapshot.user, ALLOWED_USER_KEYS)) {
+    throw new HttpsError("invalid-argument", "User payload contains unsupported fields.");
+  }
+
+  for (const bookmark of snapshot.bookmarks) {
+    if (bookmark.note && bookmark.note.length > MAX_NOTE_LENGTH) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Bookmark note length exceeds ${MAX_NOTE_LENGTH} characters.`,
+      );
+    }
+  }
 }
 
 function parseBookmark(rawBookmark) {
@@ -442,3 +485,20 @@ function isRemoteNewer(local, remote) {
 function buildBookmarkId(translationId, book, chapter, verse) {
   return `${translationId}|${book}|${chapter}|${verse}`;
 }
+
+function hasOnlyAllowedKeys(value, allowedKeys) {
+  return Object.keys(toObject(value)).every((key) => allowedKeys.has(key));
+}
+
+exports._internals = {
+  MAX_NOTE_LENGTH,
+  MAX_BOOKMARKS_PER_SYNC,
+  MAX_TOMBSTONES_PER_SYNC,
+  parseSnapshot,
+  validateSnapshot,
+  mergeSnapshots,
+  mergeUsers,
+  mergeBookmarks,
+  resolveBookmarkEvent,
+  pickBookmarkWinner,
+};
