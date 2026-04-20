@@ -75,3 +75,62 @@ test("validateSnapshot rejects unsupported user keys", () => {
     (error) => error instanceof HttpsError && error.code === "invalid-argument",
   );
 });
+
+test("validateSnapshot rejects malformed bookmarks from parseSnapshot", () => {
+  const parsed = _internals.parseSnapshot({
+    user: {},
+    bookmarks: [
+      {
+        translationId: "web",
+        book: "John",
+        chapter: 0,
+        verse: 16,
+      },
+    ],
+    tombstones: {},
+  });
+
+  assert.throws(
+    () => _internals.validateSnapshot(parsed),
+    (error) => error instanceof HttpsError && error.code === "invalid-argument",
+  );
+});
+
+test("validateSnapshot rejects malformed tombstone ids", () => {
+  const snapshot = {
+    user: {},
+    bookmarks: [],
+    tombstones: {
+      invalidId: new Date("2026-04-22T11:00:00.000Z"),
+    },
+  };
+
+  assert.throws(
+    () => _internals.validateSnapshot(snapshot),
+    (error) => error instanceof HttpsError && error.code === "invalid-argument",
+  );
+});
+
+test("validateSnapshot rejects out-of-range chapter values", () => {
+  const snapshot = {
+    user: {},
+    bookmarks: [
+      {
+        id: `web|John|${_internals.MAX_CHAPTER_NUMBER + 1}|1`,
+        translationId: "web",
+        book: "John",
+        chapter: _internals.MAX_CHAPTER_NUMBER + 1,
+        verse: 1,
+        note: null,
+        createdAt: new Date("2026-04-22T10:00:00.000Z"),
+        updatedAt: new Date("2026-04-22T10:00:00.000Z"),
+      },
+    ],
+    tombstones: {},
+  };
+
+  assert.throws(
+    () => _internals.validateSnapshot(snapshot),
+    (error) => error instanceof HttpsError && error.code === "invalid-argument",
+  );
+});

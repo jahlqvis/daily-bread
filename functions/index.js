@@ -7,6 +7,21 @@ const db = admin.firestore();
 const MAX_NOTE_LENGTH = 1000;
 const MAX_BOOKMARKS_PER_SYNC = 2000;
 const MAX_TOMBSTONES_PER_SYNC = 5000;
+const MAX_SYNC_PAYLOAD_BYTES = 1024 * 1024;
+const MAX_BOOK_NAME_LENGTH = 80;
+const MAX_TRANSLATION_ID_LENGTH = 32;
+const MAX_BOOKMARK_ID_LENGTH = 220;
+const MAX_CHAPTER_NUMBER = 200;
+const MAX_VERSE_NUMBER = 300;
+const MAX_BADGES = 500;
+const MAX_BADGE_LENGTH = 64;
+const MAX_READING_PROGRESS_BOOKS = 100;
+const MAX_READING_PROGRESS_CHAPTERS_PER_BOOK = 300;
+const MAX_READING_PROGRESS_CHAPTERS_TOTAL = 5000;
+const MAX_STREAK = 100000;
+const MAX_TOTAL_XP = 100000000;
+const MAX_LEVEL = 10000;
+const MAX_STREAK_FREEZES = 1000;
 const ALLOWED_USER_KEYS = new Set([
   "currentStreak",
   "longestStreak",
@@ -45,22 +60,31 @@ exports.syncUserState = onCall({ region: "us-central1" }, async (request) => {
 function parseSnapshot(rawSnapshot) {
   const snapshot = toObject(rawSnapshot);
   const user = toObject(snapshot.user);
-  const bookmarks = Array.isArray(snapshot.bookmarks)
-    ? snapshot.bookmarks
-        .map((bookmark) => parseBookmark(bookmark))
-        .filter((bookmark) => bookmark !== null)
-    : [];
+  const rawBookmarks = Array.isArray(snapshot.bookmarks) ? snapshot.bookmarks : [];
+  const parsedBookmarks = rawBookmarks.map((bookmark) => parseBookmark(bookmark));
+  const bookmarks = parsedBookmarks.filter((bookmark) => bookmark !== null);
+  const invalidBookmarkCount = parsedBookmarks.length - bookmarks.length;
 
-  const tombstones = parseIsoMap(snapshot.tombstones);
+  const { tombstones, invalidTombstoneCount } = parseIsoMap(snapshot.tombstones);
 
   return {
     user,
     bookmarks,
     tombstones,
+    invalidBookmarkCount,
+    invalidTombstoneCount,
+    payloadBytes: computePayloadBytes(snapshot),
   };
 }
 
 function validateSnapshot(snapshot) {
+  if (snapshot.payloadBytes > MAX_SYNC_PAYLOAD_BYTES) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Sync payload is too large (max ${MAX_SYNC_PAYLOAD_BYTES} bytes).`,
+    );
+  }
+
   if (snapshot.bookmarks.length > MAX_BOOKMARKS_PER_SYNC) {
     throw new HttpsError(
       "invalid-argument",
@@ -75,16 +99,159 @@ function validateSnapshot(snapshot) {
     );
   }
 
+  if ((snapshot.invalidBookmarkCount ?? 0) > 0) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Sync payload includes malformed bookmarks.",
+    );
+  }
+
+  if ((snapshot.invalidTombstoneCount ?? 0) > 0) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Sync payload includes malformed tombstones.",
+    );
+  }
+
   if (!hasOnlyAllowedKeys(snapshot.user, ALLOWED_USER_KEYS)) {
     throw new HttpsError("invalid-argument", "User payload contains unsupported fields.");
   }
 
   for (const bookmark of snapshot.bookmarks) {
+    if (
+      bookmark.translationId.length == 0 ||
+      bookmark.translationId.length > MAX_TRANSLATION_ID_LENGTH
+    ) {
+      throw new HttpsError("invalid-argument", "Bookmark translationId is invalid.");
+    }
+
+    if (bookmark.book.length == 0 || bookmark.book.length > MAX_BOOK_NAME_LENGTH) {
+      throw new HttpsError("invalid-argument", "Bookmark book name is invalid.");
+    }
+
+    if (!isIntegerInRange(bookmark.chapter, 1, MAX_CHAPTER_NUMBER)) {
+      throw new HttpsError("invalid-argument", "Bookmark chapter is out of range.");
+    }
+
+    if (!isIntegerInRange(bookmark.verse, 1, MAX_VERSE_NUMBER)) {
+      throw new HttpsError("invalid-argument", "Bookmark verse is out of range.");
+    }
+
     if (bookmark.note && bookmark.note.length > MAX_NOTE_LENGTH) {
       throw new HttpsError(
         "invalid-argument",
         `Bookmark note length exceeds ${MAX_NOTE_LENGTH} characters.`,
       );
+    }
+
+    if (bookmark.updatedAt.getTime() < bookmark.createdAt.getTime()) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Bookmark updatedAt cannot be earlier than createdAt.",
+      );
+    }
+  }
+
+  validateUser(snapshot.user);
+  validateBookmarkIds(snapshot.bookmarks);
+  validateTombstones(snapshot.tombstones);
+}
+
+function validateUser(user) {
+  if (!isIntegerInRange(toNumber(user.currentStreak), 0, MAX_STREAK)) {
+    throw new HttpsError("invalid-argument", "currentStreak is out of range.");
+  }
+
+  if (!isIntegerInRange(toNumber(user.longestStreak), 0, MAX_STREAK)) {
+    throw new HttpsError("invalid-argument", "longestStreak is out of range.");
+  }
+
+  if (!isIntegerInRange(toNumber(user.totalXp), 0, MAX_TOTAL_XP)) {
+    throw new HttpsError("invalid-argument", "totalXp is out of range.");
+  }
+
+  if (!isIntegerInRange(toNumber(user.level), 0, MAX_LEVEL)) {
+    throw new HttpsError("invalid-argument", "level is out of range.");
+  }
+
+  if (!isIntegerInRange(toNumber(user.streakFreezes), 0, MAX_STREAK_FREEZES)) {
+    throw new HttpsError("invalid-argument", "streakFreezes is out of range.");
+  }
+
+  if ("lastReadDate" in user && user.lastReadDate !== null && !parseDate(user.lastReadDate)) {
+    throw new HttpsError("invalid-argument", "lastReadDate is malformed.");
+  }
+
+  if ("badges" in user) {
+    if (!Array.isArray(user.badges) || user.badges.length > MAX_BADGES) {
+      throw new HttpsError("invalid-argument", "badges payload is invalid.");
+    }
+
+    for (const badge of user.badges) {
+      if (typeof badge !== "string" || badge.length == 0 || badge.length > MAX_BADGE_LENGTH) {
+        throw new HttpsError("invalid-argument", "badge value is invalid.");
+      }
+    }
+  }
+
+  if ("readingProgress" in user) {
+    const readingProgress = toObject(user.readingProgress);
+    const books = Object.entries(readingProgress);
+    if (books.length > MAX_READING_PROGRESS_BOOKS) {
+      throw new HttpsError("invalid-argument", "readingProgress has too many books.");
+    }
+
+    let chapterTotal = 0;
+    for (const [book, chapters] of books) {
+      if (book.length == 0 || book.length > MAX_BOOK_NAME_LENGTH) {
+        throw new HttpsError("invalid-argument", "readingProgress book key is invalid.");
+      }
+
+      if (!Array.isArray(chapters) || chapters.length > MAX_READING_PROGRESS_CHAPTERS_PER_BOOK) {
+        throw new HttpsError(
+          "invalid-argument",
+          "readingProgress chapter list is too large.",
+        );
+      }
+
+      for (const chapter of chapters) {
+        if (!isIntegerInRange(toNumber(chapter), 1, MAX_CHAPTER_NUMBER)) {
+          throw new HttpsError(
+            "invalid-argument",
+            "readingProgress chapter value is out of range.",
+          );
+        }
+        chapterTotal += 1;
+      }
+    }
+
+    if (chapterTotal > MAX_READING_PROGRESS_CHAPTERS_TOTAL) {
+      throw new HttpsError("invalid-argument", "readingProgress is too large.");
+    }
+  }
+}
+
+function validateBookmarkIds(bookmarks) {
+  const ids = new Set();
+  for (const bookmark of bookmarks) {
+    if (bookmark.id.length > MAX_BOOKMARK_ID_LENGTH || !isValidBookmarkId(bookmark.id)) {
+      throw new HttpsError("invalid-argument", "Bookmark id is malformed.");
+    }
+
+    if (ids.has(bookmark.id)) {
+      throw new HttpsError("invalid-argument", "Duplicate bookmark ids in sync payload.");
+    }
+    ids.add(bookmark.id);
+  }
+}
+
+function validateTombstones(tombstones) {
+  for (const [id, deletedAt] of Object.entries(tombstones)) {
+    if (id.length == 0 || id.length > MAX_BOOKMARK_ID_LENGTH || !isValidBookmarkId(id)) {
+      throw new HttpsError("invalid-argument", "Tombstone id is malformed.");
+    }
+    if (!(deletedAt instanceof Date) || Number.isNaN(deletedAt.getTime())) {
+      throw new HttpsError("invalid-argument", "Tombstone date is malformed.");
     }
   }
 }
@@ -381,13 +548,17 @@ function mergeProgress(target, rawProgress) {
 function parseIsoMap(rawMap) {
   const map = toObject(rawMap);
   const parsed = {};
+  let invalidCount = 0;
   Object.entries(map).forEach(([key, value]) => {
     const date = parseDate(value);
     if (date) {
       parsed[key] = date;
+      return;
     }
+
+    invalidCount += 1;
   });
-  return parsed;
+  return { tombstones: parsed, invalidTombstoneCount: invalidCount };
 }
 
 function timestampMapToIsoMap(map) {
@@ -482,6 +653,38 @@ function isRemoteNewer(local, remote) {
   return remote.getTime() > local.getTime();
 }
 
+function isIntegerInRange(value, min, max) {
+  return Number.isInteger(value) && value >= min && value <= max;
+}
+
+function isValidBookmarkId(id) {
+  const parts = String(id).split("|");
+  if (parts.length !== 4) {
+    return false;
+  }
+
+  const [translationId, book, chapterValue, verseValue] = parts;
+  const chapter = toNumber(chapterValue);
+  const verse = toNumber(verseValue);
+
+  return (
+    translationId.length > 0 &&
+    translationId.length <= MAX_TRANSLATION_ID_LENGTH &&
+    book.length > 0 &&
+    book.length <= MAX_BOOK_NAME_LENGTH &&
+    isIntegerInRange(chapter, 1, MAX_CHAPTER_NUMBER) &&
+    isIntegerInRange(verse, 1, MAX_VERSE_NUMBER)
+  );
+}
+
+function computePayloadBytes(payload) {
+  try {
+    return Buffer.byteLength(JSON.stringify(payload));
+  } catch (_) {
+    return MAX_SYNC_PAYLOAD_BYTES + 1;
+  }
+}
+
 function buildBookmarkId(translationId, book, chapter, verse) {
   return `${translationId}|${book}|${chapter}|${verse}`;
 }
@@ -494,6 +697,9 @@ exports._internals = {
   MAX_NOTE_LENGTH,
   MAX_BOOKMARKS_PER_SYNC,
   MAX_TOMBSTONES_PER_SYNC,
+  MAX_SYNC_PAYLOAD_BYTES,
+  MAX_CHAPTER_NUMBER,
+  MAX_VERSE_NUMBER,
   parseSnapshot,
   validateSnapshot,
   mergeSnapshots,
