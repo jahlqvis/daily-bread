@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -17,8 +19,143 @@ import 'verse_search_screen.dart';
 import 'reading_plans_screen.dart';
 import 'bookmarks_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  static const Duration _bookmarkSyncDebounceDelay = Duration(seconds: 2);
+
+  Timer? _bookmarkSyncDebounce;
+  bool _isSyncInFlight = false;
+  bool _suppressBookmarkObserver = false;
+  String? _lastBookmarksSignature;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      final bookmarksProvider = context.read<BookmarksProvider>();
+      _lastBookmarksSignature = _bookmarkSignature(bookmarksProvider);
+      bookmarksProvider.addListener(_onBookmarksChanged);
+      _scheduleAutoSync();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _bookmarkSyncDebounce?.cancel();
+    if (mounted) {
+      context.read<BookmarksProvider>().removeListener(_onBookmarksChanged);
+    }
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _scheduleAutoSync();
+    }
+  }
+
+  void _onBookmarksChanged() {
+    if (!mounted || _suppressBookmarkObserver) {
+      return;
+    }
+
+    final bookmarksProvider = context.read<BookmarksProvider>();
+    if (bookmarksProvider.isLoading) {
+      return;
+    }
+
+    final signature = _bookmarkSignature(bookmarksProvider);
+    if (signature == _lastBookmarksSignature) {
+      return;
+    }
+
+    _lastBookmarksSignature = signature;
+    _bookmarkSyncDebounce?.cancel();
+    _bookmarkSyncDebounce = Timer(
+      _bookmarkSyncDebounceDelay,
+      _scheduleAutoSync,
+    );
+  }
+
+  String _bookmarkSignature(BookmarksProvider provider) {
+    final bookmarkTokens =
+        provider.bookmarks
+            .map(
+              (bookmark) =>
+                  '${bookmark.id}:${bookmark.updatedAt.toIso8601String()}',
+            )
+            .toList()
+          ..sort();
+    final tombstoneTokens =
+        provider.tombstones.entries
+            .map((entry) => '${entry.key}:${entry.value.toIso8601String()}')
+            .toList()
+          ..sort();
+    return '${bookmarkTokens.join(',')}|${tombstoneTokens.join(',')}';
+  }
+
+  void _scheduleAutoSync() {
+    unawaited(_performSync(showFeedback: false));
+  }
+
+  Future<void> _performSync({required bool showFeedback}) async {
+    if (!mounted || _isSyncInFlight) {
+      return;
+    }
+
+    final servicesProvider = context.read<AppServicesProvider>();
+    final userProvider = context.read<UserProvider>();
+    final bookmarksProvider = context.read<BookmarksProvider>();
+
+    if (userProvider.isLoading || bookmarksProvider.isLoading) {
+      _bookmarkSyncDebounce?.cancel();
+      _bookmarkSyncDebounce = Timer(
+        _bookmarkSyncDebounceDelay,
+        _scheduleAutoSync,
+      );
+      return;
+    }
+
+    _isSyncInFlight = true;
+    _suppressBookmarkObserver = true;
+    try {
+      await servicesProvider.syncNow(
+        user: userProvider.user,
+        bookmarks: bookmarksProvider.bookmarks,
+        tombstones: bookmarksProvider.tombstones,
+      );
+      await userProvider.loadUser();
+      await bookmarksProvider.loadBookmarks();
+
+      _lastBookmarksSignature = _bookmarkSignature(bookmarksProvider);
+
+      if (showFeedback && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(servicesProvider.syncMessage ?? 'Sync completed'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      servicesProvider.clearSyncMessage();
+    } finally {
+      _suppressBookmarkObserver = false;
+      _isSyncInFlight = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -314,8 +451,8 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildSyncAndReminderCard(BuildContext context) {
-    return Consumer3<AppServicesProvider, UserProvider, BookmarksProvider>(
-      builder: (context, servicesProvider, userProvider, bookmarksProvider, _) {
+    return Consumer<AppServicesProvider>(
+      builder: (context, servicesProvider, _) {
         final syncedAt = servicesProvider.lastSyncedAt;
         final syncedLabel = syncedAt == null
             ? 'Not synced yet'
@@ -345,28 +482,7 @@ class HomeScreen extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: servicesProvider.isSyncing
                         ? null
-                        : () async {
-                            await servicesProvider.syncNow(
-                              user: userProvider.user,
-                              bookmarks: bookmarksProvider.bookmarks,
-                              tombstones: bookmarksProvider.tombstones,
-                            );
-                            await userProvider.loadUser();
-                            await bookmarksProvider.loadBookmarks();
-
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    servicesProvider.syncMessage ??
-                                        'Sync completed',
-                                  ),
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                              servicesProvider.clearSyncMessage();
-                            }
-                          },
+                        : () => _performSync(showFeedback: true),
                     icon: servicesProvider.isSyncing
                         ? const SizedBox(
                             width: 18,
