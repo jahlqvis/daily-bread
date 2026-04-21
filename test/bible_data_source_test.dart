@@ -2,8 +2,51 @@ import 'package:daily_bread/core/constants/bible_translation.dart';
 import 'package:daily_bread/data/datasources/bible_data_source.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const _genesisWeb =
+    '{"chapters":[{"chapter":1,"verses":[{"verse":1,"text":"In the beginning God created the heavens and the earth."},{"verse":2,"text":"The earth was formless and empty."}]}]}';
+const _genesisKjv =
+    '{"chapters":[{"chapter":1,"verses":[{"verse":1,"text":"In the beginning God created the heaven and the earth."},{"verse":2,"text":"And the earth was without form, and void."}]}]}';
+const _johnWeb =
+    '{"chapters":[{"chapter":1,"verses":[{"verse":1,"text":"In the beginning was the Word, and the Word was with God, and the Word was God."}]}]}';
+const _johnKjv =
+    '{"chapters":[{"chapter":1,"verses":[{"verse":1,"text":"In the beginning was the Word, and the Word was with God, and the Word was God."}]}]}';
+const _samuelKjv =
+    '{"chapters":[{"chapter":1,"verses":[{"verse":1,"text":"Now there was a certain man."}]}]}';
+
+Map<String, String> _fixtureAssets() {
+  return {
+    'assets/bible/web_books/genesis.json': _genesisWeb,
+    'assets/bible/kjv_books/genesis.json': _genesisKjv,
+    'assets/bible/web_books/john.json': _johnWeb,
+    'assets/bible/kjv_books/john.json': _johnKjv,
+    'assets/bible/kjv_books/i_samuel.json': _samuelKjv,
+  };
+}
+
+BibleDataSource _fixtureDataSource({
+  Map<String, String>? overrides,
+  Iterable<String> removePaths = const [],
+}) {
+  final fixtures = _fixtureAssets()..addAll(overrides ?? const {});
+  for (final path in removePaths) {
+    fixtures.remove(path);
+  }
+  return BibleDataSource(
+    assetStringLoader: (path) async {
+      final value = fixtures[path];
+      if (value == null) {
+        throw StateError('Missing fixture for $path');
+      }
+      return value;
+    },
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(BibleDataSource.clearCachesForTesting);
+  tearDown(BibleDataSource.clearCachesForTesting);
 
   group('BibleDataSource.assetSlugFor', () {
     test('uses roman numerals for KJV/ASV assets', () {
@@ -50,7 +93,7 @@ void main() {
 
   group('BibleDataSource preloadBook', () {
     test('loads Genesis for WEB translation', () async {
-      final dataSource = BibleDataSource();
+      final dataSource = _fixtureDataSource();
 
       await dataSource.preloadBook('Genesis', BibleTranslation.web);
       final chapter = dataSource.getChapter('Genesis', 1, BibleTranslation.web);
@@ -60,7 +103,7 @@ void main() {
     });
 
     test('loads 1 Samuel for KJV translation', () async {
-      final dataSource = BibleDataSource();
+      final dataSource = _fixtureDataSource();
 
       await dataSource.preloadBook('1 Samuel', BibleTranslation.kjv);
       final chapter = dataSource.getChapter(
@@ -75,7 +118,7 @@ void main() {
 
   group('BibleDataSource searchVerses', () {
     test('finds verses by phrase in selected translation', () async {
-      final dataSource = BibleDataSource();
+      final dataSource = _fixtureDataSource();
 
       final results = await dataSource.searchVerses(
         'in the beginning',
@@ -90,7 +133,7 @@ void main() {
     });
 
     test('returns empty list when no verse matches query', () async {
-      final dataSource = BibleDataSource();
+      final dataSource = _fixtureDataSource();
 
       final results = await dataSource.searchVerses(
         'zzzzqwertynotaverse',
@@ -104,18 +147,17 @@ void main() {
 
   group('BibleDataSource search index behavior', () {
     setUp(() {
-      BibleDataSource.clearCachesForTesting();
       BibleDataSource.setSearchIndexBooksForTesting(const ['Genesis', 'John']);
     });
 
     tearDown(() {
-      BibleDataSource.clearCachesForTesting();
+      BibleDataSource.setSearchIndexBooksForTesting(null);
     });
 
     test(
       'builds index once and reuses it for repeated translation queries',
       () async {
-        final dataSource = BibleDataSource();
+        final dataSource = _fixtureDataSource();
 
         final first = await dataSource.searchVerses(
           'in the beginning',
@@ -146,7 +188,7 @@ void main() {
     );
 
     test('maintains separate search indexes per translation', () async {
-      final dataSource = BibleDataSource();
+      final dataSource = _fixtureDataSource();
 
       await dataSource.searchVerses('in the beginning', BibleTranslation.kjv);
       await dataSource.searchVerses('in the beginning', BibleTranslation.web);
@@ -172,6 +214,21 @@ void main() {
       expect(
         BibleDataSource.searchIndexBuildCountForTesting(BibleTranslation.web),
         1,
+      );
+    });
+
+    test('throws deterministic error when fixture asset is missing', () async {
+      final dataSource = _fixtureDataSource(
+        removePaths: const ['assets/bible/kjv_books/genesis.json'],
+      );
+
+      await expectLater(
+        () => dataSource.searchVerses(
+          'beginning',
+          BibleTranslation.kjv,
+          books: const ['Genesis'],
+        ),
+        throwsA(isA<StateError>()),
       );
     });
   });

@@ -8,6 +8,8 @@ import '../../core/constants/bible_translation.dart';
 import '../../core/utils/book_slug.dart';
 import '../models/bible_passage_model.dart';
 
+typedef AssetStringLoader = Future<String> Function(String path);
+
 class BibleDataSource {
   static final Map<BibleTranslation, Map<String, Map<int, List<BiblePassage>>>>
   _bookCache = {};
@@ -16,6 +18,11 @@ class BibleDataSource {
   static final Map<BibleTranslation, Future<void>> _buildingSearchIndex = {};
   static final Map<BibleTranslation, int> _searchIndexBuildCounts = {};
   static List<String>? _searchIndexBooksOverride;
+
+  final AssetStringLoader _assetStringLoader;
+
+  BibleDataSource({AssetStringLoader? assetStringLoader})
+    : _assetStringLoader = assetStringLoader ?? rootBundle.loadString;
 
   Future<void> loadBibleData(BibleTranslation translation) async {
     await preloadBook(AppConstants.booksOfTheBible.first, translation);
@@ -41,7 +48,7 @@ class BibleDataSource {
   Future<void> _loadBook(String book, BibleTranslation translation) async {
     final slug = assetSlugFor(book, translation);
     final path = '${translation.assetDirectory}/$slug.json';
-    final jsonString = await rootBundle.loadString(path);
+    final jsonString = await _assetStringLoader(path);
     final Map<String, dynamic> jsonMap =
         jsonDecode(jsonString) as Map<String, dynamic>;
     final List<dynamic> chapters = jsonMap['chapters'] as List<dynamic>? ?? [];
