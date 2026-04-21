@@ -82,7 +82,6 @@ void main() {
     );
 
     await Future.wait([
-      bibleProvider.loadBible(),
       userProvider.loadUser(),
       planProvider.loadPlanState(),
       bookmarksProvider.loadBookmarks(),
@@ -103,7 +102,7 @@ void main() {
             value: appServicesProvider,
           ),
         ],
-        child: const MaterialApp(home: HomeScreen()),
+        child: const MaterialApp(home: HomeScreen(enableAutoSync: false)),
       ),
     );
     await tester.pump();
@@ -134,6 +133,5 @@ void main() {
     expect(find.text('Sync details'), findsOneWidget);
     expect(find.textContaining('permission'), findsWidgets);
 
-    await connectivity.dispose();
   });
 }

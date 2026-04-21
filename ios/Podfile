@@ -27,8 +27,15 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
+$FirebaseSDKVersion = '11.10.0'
+
 target 'Runner' do
   use_frameworks!
+
+  pod 'FirebaseAppCheckInterop', '11.10.0'
+  pod 'FirebaseAuthInterop', '11.10.0'
+  pod 'FirebaseMessagingInterop', '11.10.0'
+  pod 'FirebaseSharedSwift', '11.10.0'
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

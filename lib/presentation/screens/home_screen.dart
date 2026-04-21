@@ -20,7 +20,9 @@ import 'reading_plans_screen.dart';
 import 'bookmarks_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.enableAutoSync = true});
+
+  final bool enableAutoSync;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -38,6 +40,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    if (!widget.enableAutoSync) {
+      return;
+    }
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -54,7 +59,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    if (widget.enableAutoSync) {
+      WidgetsBinding.instance.removeObserver(this);
+    }
     _bookmarkSyncDebounce?.cancel();
     _bookmarksProviderListener?.removeListener(_onBookmarksChanged);
     _bookmarksProviderListener = null;
@@ -63,6 +70,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!widget.enableAutoSync) {
+      return;
+    }
     if (state == AppLifecycleState.resumed) {
       _scheduleAutoSync(reason: 'resume');
     }
