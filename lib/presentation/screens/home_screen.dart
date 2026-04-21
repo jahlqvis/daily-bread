@@ -46,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final bookmarksProvider = context.read<BookmarksProvider>();
       _lastBookmarksSignature = _bookmarkSignature(bookmarksProvider);
       bookmarksProvider.addListener(_onBookmarksChanged);
-      _scheduleAutoSync();
+      _scheduleAutoSync(reason: 'launch');
     });
   }
 
@@ -63,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _scheduleAutoSync();
+      _scheduleAutoSync(reason: 'resume');
     }
   }
 
@@ -86,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _bookmarkSyncDebounce?.cancel();
     _bookmarkSyncDebounce = Timer(
       _bookmarkSyncDebounceDelay,
-      _scheduleAutoSync,
+      () => _scheduleAutoSync(reason: 'bookmark_change'),
     );
   }
 
@@ -107,11 +107,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return '${bookmarkTokens.join(',')}|${tombstoneTokens.join(',')}';
   }
 
-  void _scheduleAutoSync() {
-    unawaited(_performSync(showFeedback: false));
+  void _scheduleAutoSync({required String reason}) {
+    unawaited(_performSync(showFeedback: false, reason: reason));
   }
 
-  Future<void> _performSync({required bool showFeedback}) async {
+  Future<void> _performSync({
+    required bool showFeedback,
+    required String reason,
+  }) async {
     if (!mounted || _isSyncInFlight) {
       return;
     }
@@ -124,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _bookmarkSyncDebounce?.cancel();
       _bookmarkSyncDebounce = Timer(
         _bookmarkSyncDebounceDelay,
-        _scheduleAutoSync,
+        () => _scheduleAutoSync(reason: reason),
       );
       return;
     }
@@ -136,9 +139,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         user: userProvider.user,
         bookmarks: bookmarksProvider.bookmarks,
         tombstones: bookmarksProvider.tombstones,
+        reason: reason,
+        onSynced: () async {
+          await userProvider.loadUser();
+          await bookmarksProvider.loadBookmarks();
+        },
       );
-      await userProvider.loadUser();
-      await bookmarksProvider.loadBookmarks();
+      if (!mounted) {
+        return;
+      }
 
       _lastBookmarksSignature = _bookmarkSignature(bookmarksProvider);
 
@@ -476,13 +485,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 4),
                 Text(syncedLabel, style: TextStyle(color: Colors.grey[700])),
+                const SizedBox(height: 4),
+                Text(
+                  _syncStatusLabel(servicesProvider),
+                  style: TextStyle(
+                    color: _syncStatusColor(servicesProvider),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: servicesProvider.isSyncing
                         ? null
-                        : () => _performSync(showFeedback: true),
+                        : () => _performSync(
+                            showFeedback: true,
+                            reason: 'manual',
+                          ),
                     icon: servicesProvider.isSyncing
                         ? const SizedBox(
                             width: 18,
@@ -912,6 +932,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         context,
         MaterialPageRoute(builder: (_) => const ReadingScreen()),
       );
+    }
+  }
+
+  String _syncStatusLabel(AppServicesProvider servicesProvider) {
+    if (servicesProvider.isOffline &&
+        (servicesProvider.syncStatus == SyncStatus.pending ||
+            servicesProvider.syncStatus == SyncStatus.retrying)) {
+      return 'Offline. Sync queued until connection returns.';
+    }
+
+    switch (servicesProvider.syncStatus) {
+      case SyncStatus.idle:
+        return 'Status: Synced';
+      case SyncStatus.pending:
+        return 'Status: Pending';
+      case SyncStatus.syncing:
+        return 'Status: Syncing';
+      case SyncStatus.retrying:
+        final nextRetryAt = servicesProvider.nextRetryAt;
+        if (nextRetryAt == null) {
+          return 'Status: Retrying';
+        }
+        final secondsLeft = nextRetryAt
+            .difference(DateTime.now())
+            .inSeconds
+            .clamp(0, 9999);
+        return 'Status: Retrying in ${secondsLeft}s';
+      case SyncStatus.failed:
+        return 'Status: Failed. Please retry.';
+    }
+  }
+
+  Color _syncStatusColor(AppServicesProvider servicesProvider) {
+    switch (servicesProvider.syncStatus) {
+      case SyncStatus.idle:
+        return Colors.green[700]!;
+      case SyncStatus.pending:
+        return Colors.orange[800]!;
+      case SyncStatus.syncing:
+        return AppTheme.primaryColor;
+      case SyncStatus.retrying:
+        return Colors.orange[800]!;
+      case SyncStatus.failed:
+        return Colors.red[700]!;
     }
   }
 

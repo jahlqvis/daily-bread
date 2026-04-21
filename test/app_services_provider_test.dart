@@ -1,11 +1,79 @@
+import 'dart:async';
+import 'dart:collection';
+
 import 'package:daily_bread/data/datasources/local_data_source.dart';
 import 'package:daily_bread/data/models/user_model.dart';
 import 'package:daily_bread/data/models/verse_bookmark_model.dart';
 import 'package:daily_bread/presentation/providers/app_services_provider.dart';
 import 'package:daily_bread/services/cloud/cloud_sync_service.dart';
 import 'package:daily_bread/services/notifications/daily_reminder_service.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _FakeConnectivity implements SyncConnectivity {
+  bool _offline;
+  final StreamController<bool> _controller = StreamController<bool>.broadcast();
+
+  _FakeConnectivity(this._offline);
+
+  @override
+  Future<bool> get isOffline async => _offline;
+
+  @override
+  Stream<bool> get onOfflineChanged => _controller.stream;
+
+  void setOffline(bool value) {
+    _offline = value;
+    _controller.add(value);
+  }
+
+  Future<void> dispose() async {
+    await _controller.close();
+  }
+}
+
+class _FakeCloudSyncService implements CloudSyncService {
+  final DateTime Function() _nowProvider;
+  final Queue<Object> _errors = Queue<Object>();
+
+  CloudSyncSnapshot? _lastSnapshot;
+  DateTime? _lastSyncedAt;
+  int callCount = 0;
+
+  _FakeCloudSyncService({DateTime Function()? nowProvider})
+    : _nowProvider = nowProvider ?? DateTime.now;
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  String get backendLabel => 'Firebase';
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  DateTime? getLastSyncedAt() => _lastSyncedAt;
+
+  @override
+  Future<DateTime> syncSnapshot(CloudSyncSnapshot snapshot) async {
+    callCount += 1;
+    _lastSnapshot = snapshot;
+    if (_errors.isNotEmpty) {
+      throw _errors.removeFirst();
+    }
+
+    _lastSyncedAt = _nowProvider();
+    return _lastSyncedAt!;
+  }
+
+  void enqueueError(Object error) {
+    _errors.add(error);
+  }
+
+  CloudSyncSnapshot? get lastSnapshot => _lastSnapshot;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,10 +83,13 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
 
       final provider = AppServicesProvider(
-        LocalCloudSyncService(localDataSource),
+        fakeSyncService,
         LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
       );
 
       await provider.syncNow(
@@ -35,31 +106,113 @@ void main() {
       );
 
       expect(provider.lastSyncedAt, isNotNull);
-      expect(localDataSource.getCloudSnapshot(), isNotNull);
-      expect(localDataSource.getCloudLastSyncedAt(), isNotNull);
+      expect(fakeSyncService.lastSnapshot, isNotNull);
+      expect(provider.syncStatus, SyncStatus.idle);
+
+      provider.dispose();
+      await connectivity.dispose();
+    });
+
+    test(
+      'retryable sync failures schedule backoff retry and recover',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final localDataSource = LocalDataSource(prefs);
+        final fakeSyncService = _FakeCloudSyncService();
+        final connectivity = _FakeConnectivity(false);
+
+        fakeSyncService.enqueueError(
+          FirebaseException(plugin: 'cloud_functions', code: 'unavailable'),
+        );
+
+        final provider = AppServicesProvider(
+          fakeSyncService,
+          LocalReminderService(localDataSource),
+          syncConnectivity: connectivity,
+        );
+
+        await provider.syncNow(
+          user: UserModel(totalXp: 10),
+          bookmarks: const [],
+        );
+
+        expect(provider.syncStatus, SyncStatus.retrying);
+        expect(provider.retryCount, 1);
+        expect(provider.nextRetryAt, isNotNull);
+
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        expect(provider.syncStatus, SyncStatus.idle);
+        expect(provider.retryCount, 0);
+        expect(provider.syncSuccessCount, 1);
+        expect(fakeSyncService.callCount, greaterThanOrEqualTo(2));
+
+        provider.dispose();
+        await connectivity.dispose();
+      },
+    );
+
+    test('offline state queues sync until connectivity is restored', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(true);
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+      );
+
+      await provider.requestSync(
+        user: UserModel(totalXp: 15),
+        bookmarks: const [],
+        reason: 'launch',
+      );
+
+      expect(provider.syncStatus, SyncStatus.pending);
+      expect(fakeSyncService.callCount, 0);
+
+      connectivity.setOffline(false);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      expect(fakeSyncService.callCount, 1);
+      expect(provider.syncStatus, SyncStatus.idle);
+
+      provider.dispose();
+      await connectivity.dispose();
     });
 
     test('reminder settings are persisted and reloaded', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final localDataSource = LocalDataSource(prefs);
+      final connectivity = _FakeConnectivity(false);
 
       final provider = AppServicesProvider(
-        LocalCloudSyncService(localDataSource),
+        _FakeCloudSyncService(),
         LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
       );
 
       await provider.setReminderEnabled(true);
       await provider.setReminderTime('07:30');
 
       final reloaded = AppServicesProvider(
-        LocalCloudSyncService(localDataSource),
+        _FakeCloudSyncService(),
         LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
       );
 
       expect(reloaded.reminderEnabled, isTrue);
       expect(reloaded.reminderTime, '07:30');
       expect(reloaded.reminderSupported, isFalse);
+
+      provider.dispose();
+      reloaded.dispose();
+      await connectivity.dispose();
     });
   });
 }
