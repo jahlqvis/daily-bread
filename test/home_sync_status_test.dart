@@ -106,7 +106,8 @@ void main() {
         child: const MaterialApp(home: HomeScreen()),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     fakeSyncService.nextError = FirebaseException(
       plugin: 'cloud_functions',
@@ -118,7 +119,8 @@ void main() {
       bookmarks: const <VerseBookmark>[],
       reason: 'manual',
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Status: Failed'), findsOneWidget);
     expect(find.text('Retry now'), findsOneWidget);
@@ -126,7 +128,8 @@ void main() {
 
     await tester.ensureVisible(find.text('View details'));
     await tester.tap(find.text('View details'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Sync details'), findsOneWidget);
     expect(find.textContaining('permission'), findsWidgets);
