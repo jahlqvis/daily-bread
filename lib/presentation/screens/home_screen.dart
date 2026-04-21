@@ -33,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isSyncInFlight = false;
   bool _suppressBookmarkObserver = false;
   String? _lastBookmarksSignature;
+  BookmarksProvider? _bookmarksProviderListener;
 
   @override
   void initState() {
@@ -45,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       final bookmarksProvider = context.read<BookmarksProvider>();
       _lastBookmarksSignature = _bookmarkSignature(bookmarksProvider);
+      _bookmarksProviderListener = bookmarksProvider;
       bookmarksProvider.addListener(_onBookmarksChanged);
       _scheduleAutoSync(reason: 'launch');
     });
@@ -54,9 +56,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _bookmarkSyncDebounce?.cancel();
-    if (mounted) {
-      context.read<BookmarksProvider>().removeListener(_onBookmarksChanged);
-    }
+    _bookmarksProviderListener?.removeListener(_onBookmarksChanged);
+    _bookmarksProviderListener = null;
     super.dispose();
   }
 
@@ -515,6 +516,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
+                if (servicesProvider.syncStatus == SyncStatus.failed) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _syncErrorSummary(servicesProvider),
+                    style: TextStyle(color: Colors.red[700]),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: servicesProvider.isSyncing
+                            ? null
+                            : () => _performSync(
+                                showFeedback: true,
+                                reason: 'manual_retry',
+                              ),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry now'),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () =>
+                            _showSyncDetailsDialog(context, servicesProvider),
+                        child: const Text('View details'),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
@@ -960,8 +989,63 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             .clamp(0, 9999);
         return 'Status: Retrying in ${secondsLeft}s';
       case SyncStatus.failed:
-        return 'Status: Failed. Please retry.';
+        return 'Status: Failed';
     }
+  }
+
+  String _syncErrorSummary(AppServicesProvider servicesProvider) {
+    final category = servicesProvider.lastSyncErrorCategory;
+    final code = servicesProvider.lastSyncErrorCode;
+    if (category == SyncErrorCategory.none) {
+      return 'Last sync failed.';
+    }
+    final categoryLabel = category.name;
+    if (code == null || code.isEmpty || code == 'unknown') {
+      return 'Reason: $categoryLabel issue';
+    }
+    return 'Reason: $categoryLabel ($code)';
+  }
+
+  Future<void> _showSyncDetailsDialog(
+    BuildContext context,
+    AppServicesProvider servicesProvider,
+  ) async {
+    final attempted = servicesProvider.lastSyncAttemptAt;
+    final nextRetryAt = servicesProvider.nextRetryAt;
+    final errorMessage = servicesProvider.lastSyncErrorMessage ?? 'N/A';
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Sync details'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Status: ${servicesProvider.syncStatus.name}'),
+              Text('Category: ${servicesProvider.lastSyncErrorCategory.name}'),
+              Text('Code: ${servicesProvider.lastSyncErrorCode ?? 'unknown'}'),
+              Text('Retry attempts: ${servicesProvider.retryCount}'),
+              Text(
+                'Last attempt: ${attempted == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(attempted)}',
+              ),
+              Text(
+                'Next retry: ${nextRetryAt == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(nextRetryAt)}',
+              ),
+              const SizedBox(height: 8),
+              Text('Error: $errorMessage'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Color _syncStatusColor(AppServicesProvider servicesProvider) {

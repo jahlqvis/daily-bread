@@ -11,6 +11,20 @@ import '../../services/notifications/daily_reminder_service.dart';
 
 enum SyncStatus { idle, pending, syncing, retrying, failed }
 
+enum SyncErrorCategory {
+  none,
+  network,
+  auth,
+  permission,
+  validation,
+  server,
+  unknown,
+}
+
+abstract class SyncTelemetry {
+  void record(String event, Map<String, Object?> metadata);
+}
+
 abstract class SyncConnectivity {
   Future<bool> get isOffline;
   Stream<bool> get onOfflineChanged;
@@ -58,13 +72,16 @@ class AppServicesProvider extends ChangeNotifier {
   final CloudSyncService _cloudSyncService;
   final DailyReminderService _dailyReminderService;
   final SyncConnectivity _syncConnectivity;
+  final SyncTelemetry? _syncTelemetry;
 
   AppServicesProvider(
     this._cloudSyncService,
     this._dailyReminderService, {
     SyncConnectivity? syncConnectivity,
+    SyncTelemetry? syncTelemetry,
   }) : _syncConnectivity =
-           syncConnectivity ?? DeviceSyncConnectivity(Connectivity()) {
+           syncConnectivity ?? DeviceSyncConnectivity(Connectivity()),
+       _syncTelemetry = syncTelemetry {
     _loadFromServices();
     _connectivityReady = _bootstrapConnectivity();
   }
@@ -83,6 +100,7 @@ class AppServicesProvider extends ChangeNotifier {
   DateTime? _lastSyncSuccessAt;
   String? _lastSyncErrorCode;
   String? _lastSyncErrorMessage;
+  SyncErrorCategory _lastSyncErrorCategory = SyncErrorCategory.none;
   bool _isOffline = false;
   Timer? _retryTimer;
   StreamSubscription<bool>? _connectivitySubscription;
@@ -110,6 +128,7 @@ class AppServicesProvider extends ChangeNotifier {
   DateTime? get lastSyncSuccessAt => _lastSyncSuccessAt;
   String? get lastSyncErrorCode => _lastSyncErrorCode;
   String? get lastSyncErrorMessage => _lastSyncErrorMessage;
+  SyncErrorCategory get lastSyncErrorCategory => _lastSyncErrorCategory;
   bool get isOffline => _isOffline;
   int get syncSuccessCount => _syncSuccessCount;
   int get syncFailureCount => _syncFailureCount;
@@ -199,6 +218,7 @@ class AppServicesProvider extends ChangeNotifier {
         _lastSyncSuccessAt = _lastSyncedAt;
         _lastSyncErrorCode = null;
         _lastSyncErrorMessage = null;
+        _lastSyncErrorCategory = SyncErrorCategory.none;
         _retryCount = 0;
         _nextRetryAt = null;
         _cancelRetry();
@@ -207,22 +227,35 @@ class AppServicesProvider extends ChangeNotifier {
             ? 'Synced to Firebase successfully'
             : 'Firebase not configured. Saved local backup instead.';
         _syncSuccessCount += 1;
+        _recordTelemetry('sync_success', {
+          'reason': request.reason,
+          'retryCount': _retryCount,
+          'backend': cloudBackendLabel,
+        });
         notifyListeners();
 
         if (request.onSynced != null) {
           await request.onSynced!();
         }
       } catch (error) {
+        final category = _classifyError(error);
         final retryable = _isRetryableError(error);
         _lastSyncErrorCode = _syncErrorCode(error);
         _lastSyncErrorMessage = error.toString();
+        _lastSyncErrorCategory = category;
         _syncFailureCount += 1;
+        _recordTelemetry('sync_failure', {
+          'reason': request.reason,
+          'retryable': retryable,
+          'category': category.name,
+          'code': _lastSyncErrorCode,
+        });
 
         if (!retryable) {
           _retryCount = 0;
           _nextRetryAt = null;
           _syncStatus = SyncStatus.failed;
-          _syncMessage = 'Sync failed. Please try again.';
+          _syncMessage = _failureMessageForCategory(category);
           notifyListeners();
           _isSyncing = false;
           return;
@@ -247,6 +280,13 @@ class AppServicesProvider extends ChangeNotifier {
             ? 'Offline. Sync will retry when online.'
             : 'Sync retry scheduled in ${delay.inSeconds}s.';
         _syncRetryScheduledCount += 1;
+        _recordTelemetry('sync_retry_scheduled', {
+          'reason': request.reason,
+          'retryCount': _retryCount,
+          'nextRetryInSeconds': delay.inSeconds,
+          'category': category.name,
+          'code': _lastSyncErrorCode,
+        });
         notifyListeners();
 
         _scheduleRetry(delay);
@@ -280,32 +320,9 @@ class AppServicesProvider extends ChangeNotifier {
   }
 
   bool _isRetryableError(Object error) {
-    if (error is TimeoutException) {
-      return true;
-    }
-
-    if (error is FirebaseException) {
-      final code = error.code.toLowerCase();
-      return {
-        'unavailable',
-        'deadline-exceeded',
-        'resource-exhausted',
-        'internal',
-        'aborted',
-        'unknown',
-        'network-request-failed',
-      }.contains(code);
-    }
-
-    final message = error.toString().toLowerCase();
-    return message.contains('timeout') ||
-        message.contains('socketexception') ||
-        message.contains('network') ||
-        message.contains('unavailable') ||
-        message.contains('503') ||
-        message.contains('502') ||
-        message.contains('504') ||
-        message.contains('429');
+    final category = _classifyError(error);
+    return category == SyncErrorCategory.network ||
+        category == SyncErrorCategory.server;
   }
 
   String _syncErrorCode(Object error) {
@@ -316,6 +333,89 @@ class AppServicesProvider extends ChangeNotifier {
       return 'timeout';
     }
     return 'unknown';
+  }
+
+  SyncErrorCategory _classifyError(Object error) {
+    if (error is TimeoutException) {
+      return SyncErrorCategory.network;
+    }
+
+    if (error is FirebaseException) {
+      final code = error.code.toLowerCase();
+      if ({
+        'network-request-failed',
+        'unavailable',
+        'deadline-exceeded',
+        'aborted',
+      }.contains(code)) {
+        return SyncErrorCategory.network;
+      }
+      if ({'resource-exhausted', 'internal', 'unknown'}.contains(code)) {
+        return SyncErrorCategory.server;
+      }
+      if ({'unauthenticated', 'auth-error'}.contains(code)) {
+        return SyncErrorCategory.auth;
+      }
+      if ({'permission-denied'}.contains(code)) {
+        return SyncErrorCategory.permission;
+      }
+      if ({
+        'invalid-argument',
+        'failed-precondition',
+        'out-of-range',
+      }.contains(code)) {
+        return SyncErrorCategory.validation;
+      }
+      return SyncErrorCategory.unknown;
+    }
+
+    final message = error.toString().toLowerCase();
+    if (message.contains('timeout') ||
+        message.contains('socketexception') ||
+        message.contains('network') ||
+        message.contains('dns')) {
+      return SyncErrorCategory.network;
+    }
+    if (message.contains('503') ||
+        message.contains('502') ||
+        message.contains('504') ||
+        message.contains('429') ||
+        message.contains('server error')) {
+      return SyncErrorCategory.server;
+    }
+    if (message.contains('unauthenticated') || message.contains('auth')) {
+      return SyncErrorCategory.auth;
+    }
+    if (message.contains('permission')) {
+      return SyncErrorCategory.permission;
+    }
+    if (message.contains('invalid') || message.contains('argument')) {
+      return SyncErrorCategory.validation;
+    }
+    return SyncErrorCategory.unknown;
+  }
+
+  String _failureMessageForCategory(SyncErrorCategory category) {
+    switch (category) {
+      case SyncErrorCategory.auth:
+        return 'Sync failed: sign-in issue. Please authenticate again.';
+      case SyncErrorCategory.permission:
+        return 'Sync failed: permission denied.';
+      case SyncErrorCategory.validation:
+        return 'Sync failed: invalid data payload.';
+      case SyncErrorCategory.server:
+        return 'Sync failed: server issue. Retrying may help.';
+      case SyncErrorCategory.network:
+        return 'Sync failed: network issue. Retrying may help.';
+      case SyncErrorCategory.unknown:
+        return 'Sync failed. Please try again.';
+      case SyncErrorCategory.none:
+        return 'Sync failed. Please try again.';
+    }
+  }
+
+  void _recordTelemetry(String event, Map<String, Object?> metadata) {
+    _syncTelemetry?.record(event, metadata);
   }
 
   Future<void> _bootstrapConnectivity() async {

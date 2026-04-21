@@ -75,6 +75,15 @@ class _FakeCloudSyncService implements CloudSyncService {
   CloudSyncSnapshot? get lastSnapshot => _lastSnapshot;
 }
 
+class _FakeSyncTelemetry implements SyncTelemetry {
+  final List<Map<String, Object?>> events = [];
+
+  @override
+  void record(String event, Map<String, Object?> metadata) {
+    events.add({'event': event, ...metadata});
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -152,6 +161,114 @@ void main() {
         await connectivity.dispose();
       },
     );
+
+    test(
+      'non-retryable sync failure enters failed state immediately',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final localDataSource = LocalDataSource(prefs);
+        final fakeSyncService = _FakeCloudSyncService();
+        final connectivity = _FakeConnectivity(false);
+
+        fakeSyncService.enqueueError(
+          FirebaseException(
+            plugin: 'cloud_functions',
+            code: 'invalid-argument',
+          ),
+        );
+
+        final provider = AppServicesProvider(
+          fakeSyncService,
+          LocalReminderService(localDataSource),
+          syncConnectivity: connectivity,
+        );
+
+        await provider.syncNow(
+          user: UserModel(totalXp: 10),
+          bookmarks: const [],
+        );
+
+        expect(provider.syncStatus, SyncStatus.failed);
+        expect(provider.retryCount, 0);
+        expect(provider.nextRetryAt, isNull);
+        expect(provider.lastSyncErrorCategory, SyncErrorCategory.validation);
+
+        provider.dispose();
+        await connectivity.dispose();
+      },
+    );
+
+    test('manual retry can recover after non-retryable failure', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+
+      fakeSyncService.enqueueError(
+        FirebaseException(plugin: 'cloud_functions', code: 'permission-denied'),
+      );
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+      );
+
+      await provider.syncNow(user: UserModel(totalXp: 8), bookmarks: const []);
+      expect(provider.syncStatus, SyncStatus.failed);
+
+      await provider.syncNow(
+        user: UserModel(totalXp: 9),
+        bookmarks: const [],
+        reason: 'manual_retry',
+      );
+
+      expect(provider.syncStatus, SyncStatus.idle);
+      expect(provider.lastSyncErrorCategory, SyncErrorCategory.none);
+      expect(provider.syncSuccessCount, 1);
+
+      provider.dispose();
+      await connectivity.dispose();
+    });
+
+    test('telemetry records failure, retry, and success events', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+      final telemetry = _FakeSyncTelemetry();
+
+      fakeSyncService.enqueueError(
+        FirebaseException(plugin: 'cloud_functions', code: 'unavailable'),
+      );
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+        syncTelemetry: telemetry,
+      );
+
+      await provider.syncNow(
+        user: UserModel(totalXp: 12),
+        bookmarks: const [],
+        reason: 'launch',
+      );
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      final eventNames = telemetry.events
+          .map((entry) => entry['event'] as String)
+          .toList();
+      expect(eventNames, contains('sync_failure'));
+      expect(eventNames, contains('sync_retry_scheduled'));
+      expect(eventNames, contains('sync_success'));
+
+      provider.dispose();
+      await connectivity.dispose();
+    });
 
     test('offline state queues sync until connectivity is restored', () async {
       SharedPreferences.setMockInitialValues({});
