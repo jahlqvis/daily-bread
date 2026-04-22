@@ -122,6 +122,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Status: Failed'), findsOneWidget);
+    expect(
+      find.text('Successes: 0 • Failures: 1 • Retries scheduled: 0'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Last outcome: Failure at'), findsOneWidget);
     expect(find.text('Retry now'), findsOneWidget);
     expect(find.text('View details'), findsOneWidget);
     expect(find.text('Sync details'), findsNothing);
@@ -132,6 +137,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Sync details'), findsOneWidget);
+    expect(find.text('Successes: 0'), findsOneWidget);
+    expect(find.text('Failures: 1'), findsOneWidget);
+    expect(find.text('Retries scheduled: 0'), findsOneWidget);
     expect(find.text('Category: Permission'), findsOneWidget);
 
   });
