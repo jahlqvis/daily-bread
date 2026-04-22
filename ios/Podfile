@@ -27,11 +27,17 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
+# Keep Firebase iOS pods pinned while CI uses Xcode 15.4.
+# Newer FirebaseSharedSwift releases use Swift syntax (`sending`) that fails on
+# the current GitHub Actions image/toolchain for this repository.
+# When upgrading Firebase/Xcode, update these pins together after CI validation.
 $FirebaseSDKVersion = '11.10.0'
 
 target 'Runner' do
   use_frameworks!
 
+  # Pin transitive interop pods to the same Firebase line to avoid CocoaPods
+  # resolving newer FirebaseSharedSwift versions than the core SDK pin.
   pod 'FirebaseAppCheckInterop', '11.10.0'
   pod 'FirebaseAuthInterop', '11.10.0'
   pod 'FirebaseMessagingInterop', '11.10.0'
