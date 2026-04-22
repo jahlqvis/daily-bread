@@ -1009,11 +1009,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (category == SyncErrorCategory.none) {
       return 'Last sync failed.';
     }
-    final categoryLabel = category.name;
+    final categoryLabel = _syncCategoryLabel(category);
     if (code == null || code.isEmpty || code == 'unknown') {
       return 'Reason: $categoryLabel issue';
     }
-    return 'Reason: $categoryLabel ($code)';
+    return 'Reason: $categoryLabel issue ($code)';
   }
 
   Future<void> _showSyncDetailsDialog(
@@ -1021,6 +1021,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     AppServicesProvider servicesProvider,
   ) async {
     final attempted = servicesProvider.lastSyncAttemptAt;
+    final lastSuccess = servicesProvider.lastSyncSuccessAt;
     final nextRetryAt = servicesProvider.nextRetryAt;
     final errorMessage = servicesProvider.lastSyncErrorMessage ?? 'N/A';
 
@@ -1034,11 +1035,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Status: ${servicesProvider.syncStatus.name}'),
-              Text('Category: ${servicesProvider.lastSyncErrorCategory.name}'),
+              Text(
+                'Category: ${_syncCategoryLabel(servicesProvider.lastSyncErrorCategory)}',
+              ),
               Text('Code: ${servicesProvider.lastSyncErrorCode ?? 'unknown'}'),
               Text('Retry attempts: ${servicesProvider.retryCount}'),
               Text(
                 'Last attempt: ${attempted == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(attempted)}',
+              ),
+              Text(
+                'Last success: ${lastSuccess == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(lastSuccess)}',
               ),
               Text(
                 'Next retry: ${nextRetryAt == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(nextRetryAt)}',
@@ -1070,6 +1076,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return Colors.orange[800]!;
       case SyncStatus.failed:
         return Colors.red[700]!;
+    }
+  }
+
+  String _syncCategoryLabel(SyncErrorCategory category) {
+    switch (category) {
+      case SyncErrorCategory.none:
+        return 'Unknown';
+      case SyncErrorCategory.network:
+        return 'Network';
+      case SyncErrorCategory.auth:
+        return 'Authentication';
+      case SyncErrorCategory.permission:
+        return 'Permission';
+      case SyncErrorCategory.validation:
+        return 'Validation';
+      case SyncErrorCategory.server:
+        return 'Server';
+      case SyncErrorCategory.unknown:
+        return 'Unknown';
     }
   }
 

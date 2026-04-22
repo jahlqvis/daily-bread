@@ -124,6 +124,7 @@ void main() {
     expect(find.text('Status: Failed'), findsOneWidget);
     expect(find.text('Retry now'), findsOneWidget);
     expect(find.text('View details'), findsOneWidget);
+    expect(find.text('Sync details'), findsNothing);
 
     await tester.ensureVisible(find.text('View details'));
     await tester.tap(find.text('View details'));
@@ -131,7 +132,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Sync details'), findsOneWidget);
-    expect(find.textContaining('permission'), findsWidgets);
+    expect(find.text('Category: Permission'), findsOneWidget);
 
   });
 }

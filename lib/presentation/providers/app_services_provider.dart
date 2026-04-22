@@ -65,23 +65,32 @@ class _SyncRequest {
 }
 
 class AppServicesProvider extends ChangeNotifier {
-  static const Duration _baseRetryDelay = Duration(seconds: 2);
-  static const Duration _maxRetryDelay = Duration(minutes: 5);
-  static const int _maxRetryAttempts = 8;
+  static const Duration _defaultBaseRetryDelay = Duration(seconds: 2);
+  static const Duration _defaultMaxRetryDelay = Duration(minutes: 5);
+  static const int _defaultMaxRetryAttempts = 8;
 
   final CloudSyncService _cloudSyncService;
   final DailyReminderService _dailyReminderService;
   final SyncConnectivity _syncConnectivity;
   final SyncTelemetry? _syncTelemetry;
+  final Duration _baseRetryDelay;
+  final Duration _maxRetryDelay;
+  final int _maxRetryAttempts;
 
   AppServicesProvider(
     this._cloudSyncService,
     this._dailyReminderService, {
     SyncConnectivity? syncConnectivity,
     SyncTelemetry? syncTelemetry,
+    Duration baseRetryDelay = _defaultBaseRetryDelay,
+    Duration maxRetryDelay = _defaultMaxRetryDelay,
+    int maxRetryAttempts = _defaultMaxRetryAttempts,
   }) : _syncConnectivity =
-           syncConnectivity ?? DeviceSyncConnectivity(Connectivity()),
-       _syncTelemetry = syncTelemetry {
+            syncConnectivity ?? DeviceSyncConnectivity(Connectivity()),
+       _syncTelemetry = syncTelemetry,
+       _baseRetryDelay = baseRetryDelay,
+       _maxRetryDelay = maxRetryDelay,
+       _maxRetryAttempts = maxRetryAttempts {
     _loadFromServices();
     _connectivityReady = _bootstrapConnectivity();
   }
@@ -214,6 +223,7 @@ class AppServicesProvider extends ChangeNotifier {
       notifyListeners();
 
       try {
+        final attemptNumber = _retryCount + 1;
         _lastSyncedAt = await _cloudSyncService.syncSnapshot(request.snapshot);
         _lastSyncSuccessAt = _lastSyncedAt;
         _lastSyncErrorCode = null;
@@ -227,11 +237,13 @@ class AppServicesProvider extends ChangeNotifier {
             ? 'Synced to Firebase successfully'
             : 'Firebase not configured. Saved local backup instead.';
         _syncSuccessCount += 1;
-        _recordTelemetry('sync_success', {
-          'reason': request.reason,
-          'retryCount': _retryCount,
-          'backend': cloudBackendLabel,
-        });
+        _recordTelemetry(
+          'sync_success',
+          _baseTelemetryMetadata(
+            reason: request.reason,
+            attemptNumber: attemptNumber,
+          ),
+        );
         notifyListeners();
 
         if (request.onSynced != null) {
@@ -244,12 +256,17 @@ class AppServicesProvider extends ChangeNotifier {
         _lastSyncErrorMessage = error.toString();
         _lastSyncErrorCategory = category;
         _syncFailureCount += 1;
-        _recordTelemetry('sync_failure', {
-          'reason': request.reason,
-          'retryable': retryable,
-          'category': category.name,
-          'code': _lastSyncErrorCode,
-        });
+        _recordTelemetry(
+          'sync_failure',
+          _baseTelemetryMetadata(
+            reason: request.reason,
+            retryable: retryable,
+            category: category,
+            code: _lastSyncErrorCode,
+            error: _lastSyncErrorMessage,
+            attemptNumber: _retryCount + 1,
+          ),
+        );
 
         if (!retryable) {
           _retryCount = 0;
@@ -268,6 +285,17 @@ class AppServicesProvider extends ChangeNotifier {
           _syncStatus = SyncStatus.failed;
           _syncMessage = 'Sync failed after retries. Please sync manually.';
           _nextRetryAt = null;
+          _recordTelemetry(
+            'sync_retry_exhausted',
+            _baseTelemetryMetadata(
+              reason: request.reason,
+              retryable: retryable,
+              category: category,
+              code: _lastSyncErrorCode,
+              error: _lastSyncErrorMessage,
+              attemptNumber: _retryCount,
+            ),
+          );
           notifyListeners();
           _isSyncing = false;
           return;
@@ -280,13 +308,17 @@ class AppServicesProvider extends ChangeNotifier {
             ? 'Offline. Sync will retry when online.'
             : 'Sync retry scheduled in ${delay.inSeconds}s.';
         _syncRetryScheduledCount += 1;
-        _recordTelemetry('sync_retry_scheduled', {
-          'reason': request.reason,
-          'retryCount': _retryCount,
-          'nextRetryInSeconds': delay.inSeconds,
-          'category': category.name,
-          'code': _lastSyncErrorCode,
-        });
+        _recordTelemetry(
+          'sync_retry_scheduled',
+          _baseTelemetryMetadata(
+            reason: request.reason,
+            category: category,
+            code: _lastSyncErrorCode,
+            error: _lastSyncErrorMessage,
+            nextRetryInSeconds: delay.inSeconds,
+            attemptNumber: _retryCount,
+          ),
+        );
         notifyListeners();
 
         _scheduleRetry(delay);
@@ -416,6 +448,32 @@ class AppServicesProvider extends ChangeNotifier {
 
   void _recordTelemetry(String event, Map<String, Object?> metadata) {
     _syncTelemetry?.record(event, metadata);
+  }
+
+  Map<String, Object?> _baseTelemetryMetadata({
+    required String reason,
+    int? attemptNumber,
+    bool? retryable,
+    SyncErrorCategory? category,
+    String? code,
+    String? error,
+    int? nextRetryInSeconds,
+  }) {
+    final metadata = <String, Object?>{
+      'reason': reason,
+      'backend': cloudBackendLabel,
+      'status': _syncStatus.name,
+      'retryCount': _retryCount,
+      'isOffline': _isOffline,
+      'attemptNumber': attemptNumber,
+      'category': category?.name,
+      'code': code,
+      'retryable': retryable,
+      'nextRetryInSeconds': nextRetryInSeconds,
+      'error': error,
+    };
+    metadata.removeWhere((_, value) => value == null);
+    return metadata;
   }
 
   Future<void> _bootstrapConnectivity() async {
