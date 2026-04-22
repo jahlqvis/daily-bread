@@ -59,14 +59,12 @@ The output lives in `build/web/` and has been verified locally.
 
 - `.github/workflows/flutter.yml` runs on every push/PR to `master`.
 - Job 1 (`Analyze, Test & Web Build`) runs on Ubuntu, executes `flutter pub get`, `flutter analyze`, `flutter test`, and `flutter build web --release` with cached pub packages.
-- Job 2 (`iOS Simulator Build`) runs on `macos-14`, caches CocoaPods, installs pods, and runs `xcodebuild … CODE_SIGNING_ALLOWED=NO` to ensure the Runner target continues to build despite macOS 15/Xcode 26 codesign restrictions.
+- Job 2 (`iOS Simulator Build`) runs on `macos-15`, caches CocoaPods, installs pods, and runs `xcodebuild … CODE_SIGNING_ALLOWED=NO`.
 
 ### CI stability notes
 
-- `ios/Podfile` intentionally pins Firebase iOS SDK + interop pod versions to `11.10.0`.
-- Reason: newer `FirebaseSharedSwift` releases introduce Swift syntax that the current CI Xcode toolchain cannot compile.
-- Do not remove these pins as cleanup. Treat them as temporary compatibility constraints.
-- Upgrade path: bump Xcode image and Firebase together in a dedicated branch, then remove/adjust pins only after full CI passes.
+- Firebase iOS pins were removed after validating the macOS 15 runner and updated FlutterFire constraints.
+- Keep dependency/toolchain upgrades in a dedicated branch and validate full CI before merging.
 
 ## Git workflow notes
 
