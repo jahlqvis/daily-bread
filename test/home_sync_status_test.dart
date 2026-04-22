@@ -132,7 +132,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Sync details'), findsOneWidget);
-    expect(find.textContaining('Permission'), findsOneWidget);
+    expect(find.text('Category: Permission'), findsOneWidget);
 
   });
 }
