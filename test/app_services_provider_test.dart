@@ -266,6 +266,73 @@ void main() {
       expect(eventNames, contains('sync_retry_scheduled'));
       expect(eventNames, contains('sync_success'));
 
+      final failureEvent = telemetry.events.firstWhere(
+        (entry) => entry['event'] == 'sync_failure',
+      );
+      expect(failureEvent['backend'], 'Firebase');
+      expect(failureEvent['reason'], 'launch');
+      expect(failureEvent['isOffline'], isFalse);
+      expect(failureEvent['category'], 'network');
+
+      final retryEvent = telemetry.events.firstWhere(
+        (entry) => entry['event'] == 'sync_retry_scheduled',
+      );
+      expect(retryEvent['nextRetryInSeconds'], 2);
+
+      final successEvent = telemetry.events.firstWhere(
+        (entry) => entry['event'] == 'sync_success',
+      );
+      expect(successEvent['attemptNumber'], 2);
+
+      provider.dispose();
+      await connectivity.dispose();
+    });
+
+    test('telemetry records retry exhaustion after max attempts', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+      final telemetry = _FakeSyncTelemetry();
+
+      for (var i = 0; i < 3; i++) {
+        fakeSyncService.enqueueError(
+          FirebaseException(plugin: 'cloud_functions', code: 'unavailable'),
+        );
+      }
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+        syncTelemetry: telemetry,
+        baseRetryDelay: const Duration(milliseconds: 10),
+        maxRetryDelay: const Duration(milliseconds: 20),
+        maxRetryAttempts: 2,
+      );
+
+      await provider.syncNow(
+        user: UserModel(totalXp: 12),
+        bookmarks: const [],
+        reason: 'launch',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(provider.syncStatus, SyncStatus.failed);
+      expect(
+        provider.syncMessage,
+        'Sync failed after retries. Please sync manually.',
+      );
+
+      final exhaustedEvent = telemetry.events.firstWhere(
+        (entry) => entry['event'] == 'sync_retry_exhausted',
+      );
+      expect(exhaustedEvent['reason'], 'launch');
+      expect(exhaustedEvent['backend'], 'Firebase');
+      expect(exhaustedEvent['category'], 'network');
+      expect(exhaustedEvent['isOffline'], isFalse);
+
       provider.dispose();
       await connectivity.dispose();
     });
