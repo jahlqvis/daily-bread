@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../data/datasources/local_data_source.dart';
 import '../../data/models/user_model.dart';
 import '../../data/models/verse_bookmark_model.dart';
 import '../../services/cloud/cloud_sync_service.dart';
@@ -12,6 +13,8 @@ import '../../services/notifications/daily_reminder_service.dart';
 enum SyncStatus { idle, pending, syncing, retrying, failed }
 
 enum SyncOutcome { success, failure }
+
+enum SyncHealth { unknown, healthy, degraded, critical }
 
 enum SyncErrorCategory {
   none,
@@ -75,6 +78,7 @@ class AppServicesProvider extends ChangeNotifier {
   final DailyReminderService _dailyReminderService;
   final SyncConnectivity _syncConnectivity;
   final SyncTelemetry? _syncTelemetry;
+  final LocalDataSource? _localDataSource;
   final Duration _baseRetryDelay;
   final Duration _maxRetryDelay;
   final int _maxRetryAttempts;
@@ -84,12 +88,14 @@ class AppServicesProvider extends ChangeNotifier {
     this._dailyReminderService, {
     SyncConnectivity? syncConnectivity,
     SyncTelemetry? syncTelemetry,
+    LocalDataSource? localDataSource,
     Duration baseRetryDelay = _defaultBaseRetryDelay,
     Duration maxRetryDelay = _defaultMaxRetryDelay,
     int maxRetryAttempts = _defaultMaxRetryAttempts,
   }) : _syncConnectivity =
             syncConnectivity ?? DeviceSyncConnectivity(Connectivity()),
        _syncTelemetry = syncTelemetry,
+       _localDataSource = localDataSource,
        _baseRetryDelay = baseRetryDelay,
        _maxRetryDelay = maxRetryDelay,
        _maxRetryAttempts = maxRetryAttempts {
@@ -148,6 +154,31 @@ class AppServicesProvider extends ChangeNotifier {
   int get syncSuccessCount => _syncSuccessCount;
   int get syncFailureCount => _syncFailureCount;
   int get syncRetryScheduledCount => _syncRetryScheduledCount;
+  SyncHealth get syncHealth {
+    if (_syncSuccessCount == 0 && _syncFailureCount == 0) {
+      return SyncHealth.unknown;
+    }
+    if (_syncFailureCount > 0 && _syncSuccessCount == 0) {
+      return SyncHealth.critical;
+    }
+    if (_syncFailureCount > _syncSuccessCount) {
+      return SyncHealth.degraded;
+    }
+    return SyncHealth.healthy;
+  }
+
+  String get syncHealthLabel {
+    switch (syncHealth) {
+      case SyncHealth.unknown:
+        return 'Unknown';
+      case SyncHealth.healthy:
+        return 'Healthy';
+      case SyncHealth.degraded:
+        return 'Needs attention';
+      case SyncHealth.critical:
+        return 'Critical';
+    }
+  }
 
   Future<void> syncNow({
     required UserModel user,
@@ -245,6 +276,7 @@ class AppServicesProvider extends ChangeNotifier {
             ? 'Synced to Firebase successfully'
             : 'Firebase not configured. Saved local backup instead.';
         _syncSuccessCount += 1;
+        await _persistSyncTelemetryState();
         _recordTelemetry(
           'sync_success',
           _baseTelemetryMetadata(
@@ -283,6 +315,7 @@ class AppServicesProvider extends ChangeNotifier {
           _syncMessage = _failureMessageForCategory(category);
           _lastSyncOutcome = SyncOutcome.failure;
           _lastSyncOutcomeAt = DateTime.now();
+          await _persistSyncTelemetryState();
           notifyListeners();
           _isSyncing = false;
           return;
@@ -297,6 +330,7 @@ class AppServicesProvider extends ChangeNotifier {
           _nextRetryAt = null;
           _lastSyncOutcome = SyncOutcome.failure;
           _lastSyncOutcomeAt = DateTime.now();
+          await _persistSyncTelemetryState();
           _recordTelemetry(
             'sync_retry_exhausted',
             _baseTelemetryMetadata(
@@ -320,6 +354,7 @@ class AppServicesProvider extends ChangeNotifier {
             ? 'Offline. Sync will retry when online.'
             : 'Sync retry scheduled in ${delay.inSeconds}s.';
         _syncRetryScheduledCount += 1;
+        await _persistSyncTelemetryState();
         _recordTelemetry(
           'sync_retry_scheduled',
           _baseTelemetryMetadata(
@@ -571,10 +606,50 @@ class AppServicesProvider extends ChangeNotifier {
   void _loadFromServices() {
     _lastSyncedAt = _cloudSyncService.getLastSyncedAt();
     _lastSyncSuccessAt = _lastSyncedAt;
-    _lastSyncOutcomeAt = _lastSyncedAt;
-    _lastSyncOutcome = _lastSyncedAt == null ? null : SyncOutcome.success;
+    _loadSyncTelemetryState();
+    if (_lastSyncOutcomeAt == null && _lastSyncedAt != null) {
+      _lastSyncOutcomeAt = _lastSyncedAt;
+      _lastSyncOutcome = SyncOutcome.success;
+    }
     _reminderEnabled = _dailyReminderService.isEnabled;
     _reminderTime = _dailyReminderService.reminderTime;
+  }
+
+  void _loadSyncTelemetryState() {
+    final localDataSource = _localDataSource;
+    if (localDataSource == null) {
+      return;
+    }
+
+    _syncSuccessCount = localDataSource.getSyncSuccessCount();
+    _syncFailureCount = localDataSource.getSyncFailureCount();
+    _syncRetryScheduledCount = localDataSource.getSyncRetryScheduledCount();
+    _lastSyncOutcomeAt = localDataSource.getSyncLastOutcomeAt();
+
+    switch (localDataSource.getSyncLastOutcome()) {
+      case 'success':
+        _lastSyncOutcome = SyncOutcome.success;
+        break;
+      case 'failure':
+        _lastSyncOutcome = SyncOutcome.failure;
+        break;
+      default:
+        _lastSyncOutcome = null;
+        break;
+    }
+  }
+
+  Future<void> _persistSyncTelemetryState() async {
+    final localDataSource = _localDataSource;
+    if (localDataSource == null) {
+      return;
+    }
+
+    await localDataSource.saveSyncSuccessCount(_syncSuccessCount);
+    await localDataSource.saveSyncFailureCount(_syncFailureCount);
+    await localDataSource.saveSyncRetryScheduledCount(_syncRetryScheduledCount);
+    await localDataSource.saveSyncLastOutcome(_lastSyncOutcome?.name);
+    await localDataSource.saveSyncLastOutcomeAt(_lastSyncOutcomeAt);
   }
 
   @override

@@ -185,6 +185,11 @@ class _InMemoryLocalDataSource implements LocalDataSource {
   DateTime? _cloudLastSyncedAt;
   bool _dailyReminderEnabled = false;
   String _dailyReminderTime = '08:00';
+  int _syncSuccessCount = 0;
+  int _syncFailureCount = 0;
+  int _syncRetryScheduledCount = 0;
+  String? _syncLastOutcome;
+  DateTime? _syncLastOutcomeAt;
 
   void seedUser(UserModel user) {
     _user = user;
@@ -313,5 +318,55 @@ class _InMemoryLocalDataSource implements LocalDataSource {
   @override
   Future<void> saveDailyReminderTime(String value) async {
     _dailyReminderTime = value;
+  }
+
+  @override
+  int getSyncSuccessCount() {
+    return _syncSuccessCount;
+  }
+
+  @override
+  Future<void> saveSyncSuccessCount(int value) async {
+    _syncSuccessCount = value;
+  }
+
+  @override
+  int getSyncFailureCount() {
+    return _syncFailureCount;
+  }
+
+  @override
+  Future<void> saveSyncFailureCount(int value) async {
+    _syncFailureCount = value;
+  }
+
+  @override
+  int getSyncRetryScheduledCount() {
+    return _syncRetryScheduledCount;
+  }
+
+  @override
+  Future<void> saveSyncRetryScheduledCount(int value) async {
+    _syncRetryScheduledCount = value;
+  }
+
+  @override
+  String? getSyncLastOutcome() {
+    return _syncLastOutcome;
+  }
+
+  @override
+  Future<void> saveSyncLastOutcome(String? value) async {
+    _syncLastOutcome = value;
+  }
+
+  @override
+  DateTime? getSyncLastOutcomeAt() {
+    return _syncLastOutcomeAt;
+  }
+
+  @override
+  Future<void> saveSyncLastOutcomeAt(DateTime? value) async {
+    _syncLastOutcomeAt = value;
   }
 }

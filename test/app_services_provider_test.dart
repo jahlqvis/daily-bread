@@ -99,6 +99,7 @@ void main() {
         fakeSyncService,
         LocalReminderService(localDataSource),
         syncConnectivity: connectivity,
+        localDataSource: localDataSource,
       );
 
       await provider.syncNow(
@@ -141,6 +142,7 @@ void main() {
           fakeSyncService,
           LocalReminderService(localDataSource),
           syncConnectivity: connectivity,
+          localDataSource: localDataSource,
         );
 
         await provider.syncNow(
@@ -184,6 +186,7 @@ void main() {
           fakeSyncService,
           LocalReminderService(localDataSource),
           syncConnectivity: connectivity,
+          localDataSource: localDataSource,
         );
 
         await provider.syncNow(
@@ -218,6 +221,7 @@ void main() {
         fakeSyncService,
         LocalReminderService(localDataSource),
         syncConnectivity: connectivity,
+        localDataSource: localDataSource,
       );
 
       await provider.syncNow(user: UserModel(totalXp: 8), bookmarks: const []);
@@ -256,6 +260,7 @@ void main() {
         LocalReminderService(localDataSource),
         syncConnectivity: connectivity,
         syncTelemetry: telemetry,
+        localDataSource: localDataSource,
       );
 
       await provider.syncNow(
@@ -313,6 +318,7 @@ void main() {
         LocalReminderService(localDataSource),
         syncConnectivity: connectivity,
         syncTelemetry: telemetry,
+        localDataSource: localDataSource,
         baseRetryDelay: const Duration(milliseconds: 10),
         maxRetryDelay: const Duration(milliseconds: 20),
         maxRetryAttempts: 2,
@@ -356,6 +362,7 @@ void main() {
         fakeSyncService,
         LocalReminderService(localDataSource),
         syncConnectivity: connectivity,
+        localDataSource: localDataSource,
       );
 
       await provider.requestSync(
@@ -387,6 +394,7 @@ void main() {
         _FakeCloudSyncService(),
         LocalReminderService(localDataSource),
         syncConnectivity: connectivity,
+        localDataSource: localDataSource,
       );
 
       await provider.setReminderEnabled(true);
@@ -396,6 +404,7 @@ void main() {
         _FakeCloudSyncService(),
         LocalReminderService(localDataSource),
         syncConnectivity: connectivity,
+        localDataSource: localDataSource,
       );
 
       expect(reloaded.reminderEnabled, isTrue);
@@ -404,6 +413,84 @@ void main() {
 
       provider.dispose();
       reloaded.dispose();
+      await connectivity.dispose();
+    });
+
+    test('sync telemetry counters and outcome persist across provider reloads', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+
+      final firstSyncService = _FakeCloudSyncService();
+      final firstConnectivity = _FakeConnectivity(false);
+      firstSyncService.enqueueError(
+        FirebaseException(plugin: 'cloud_functions', code: 'permission-denied'),
+      );
+
+      final first = AppServicesProvider(
+        firstSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: firstConnectivity,
+        localDataSource: localDataSource,
+      );
+
+      await first.syncNow(user: UserModel(totalXp: 10), bookmarks: const []);
+      expect(first.syncFailureCount, 1);
+      expect(first.lastSyncOutcome, SyncOutcome.failure);
+
+      first.dispose();
+      await firstConnectivity.dispose();
+
+      final secondConnectivity = _FakeConnectivity(false);
+      final second = AppServicesProvider(
+        _FakeCloudSyncService(),
+        LocalReminderService(localDataSource),
+        syncConnectivity: secondConnectivity,
+        localDataSource: localDataSource,
+      );
+
+      expect(second.syncFailureCount, 1);
+      expect(second.syncSuccessCount, 0);
+      expect(second.lastSyncOutcome, SyncOutcome.failure);
+      expect(second.lastSyncOutcomeAt, isNotNull);
+      expect(second.syncHealth, SyncHealth.critical);
+
+      second.dispose();
+      await secondConnectivity.dispose();
+    });
+
+    test('sync health reflects unknown, critical, degraded, and healthy states', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+        localDataSource: localDataSource,
+      );
+
+      expect(provider.syncHealth, SyncHealth.unknown);
+
+      fakeSyncService.enqueueError(
+        FirebaseException(plugin: 'cloud_functions', code: 'invalid-argument'),
+      );
+      await provider.syncNow(user: UserModel(totalXp: 5), bookmarks: const []);
+      expect(provider.syncHealth, SyncHealth.critical);
+
+      await provider.syncNow(user: UserModel(totalXp: 6), bookmarks: const []);
+      expect(provider.syncHealth, SyncHealth.healthy);
+
+      fakeSyncService.enqueueError(
+        FirebaseException(plugin: 'cloud_functions', code: 'permission-denied'),
+      );
+      await provider.syncNow(user: UserModel(totalXp: 7), bookmarks: const []);
+      expect(provider.syncHealth, SyncHealth.degraded);
+
+      provider.dispose();
       await connectivity.dispose();
     });
   });
