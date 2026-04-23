@@ -504,6 +504,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  'Successes: ${servicesProvider.syncSuccessCount} • Failures: ${servicesProvider.syncFailureCount} • Retries scheduled: ${servicesProvider.syncRetryScheduledCount}',
+                  style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Last outcome: ${_syncOutcomeLabel(servicesProvider)}',
+                  style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                ),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
@@ -1039,6 +1049,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 'Category: ${_syncCategoryLabel(servicesProvider.lastSyncErrorCategory)}',
               ),
               Text('Code: ${servicesProvider.lastSyncErrorCode ?? 'unknown'}'),
+              Text('Successes: ${servicesProvider.syncSuccessCount}'),
+              Text('Failures: ${servicesProvider.syncFailureCount}'),
+              Text(
+                'Retries scheduled: ${servicesProvider.syncRetryScheduledCount}',
+              ),
+              Text('Last outcome: ${_syncOutcomeLabel(servicesProvider)}'),
               Text('Retry attempts: ${servicesProvider.retryCount}'),
               Text(
                 'Last attempt: ${attempted == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(attempted)}',
@@ -1096,6 +1112,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case SyncErrorCategory.unknown:
         return 'Unknown';
     }
+  }
+
+  String _syncOutcomeLabel(AppServicesProvider servicesProvider) {
+    final outcome = servicesProvider.lastSyncOutcome;
+    final at = servicesProvider.lastSyncOutcomeAt;
+    if (outcome == null || at == null) {
+      return 'N/A';
+    }
+    final outcomeLabel =
+        outcome == SyncOutcome.success ? 'Success' : 'Failure';
+    return '$outcomeLabel at ${DateFormat('MMM d, HH:mm:ss').format(at)}';
   }
 
   Widget _buildXpGainBanner(String message) {

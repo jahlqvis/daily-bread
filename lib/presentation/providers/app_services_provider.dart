@@ -11,6 +11,8 @@ import '../../services/notifications/daily_reminder_service.dart';
 
 enum SyncStatus { idle, pending, syncing, retrying, failed }
 
+enum SyncOutcome { success, failure }
+
 enum SyncErrorCategory {
   none,
   network,
@@ -107,6 +109,8 @@ class AppServicesProvider extends ChangeNotifier {
   DateTime? _nextRetryAt;
   DateTime? _lastSyncAttemptAt;
   DateTime? _lastSyncSuccessAt;
+  DateTime? _lastSyncOutcomeAt;
+  SyncOutcome? _lastSyncOutcome;
   String? _lastSyncErrorCode;
   String? _lastSyncErrorMessage;
   SyncErrorCategory _lastSyncErrorCategory = SyncErrorCategory.none;
@@ -135,6 +139,8 @@ class AppServicesProvider extends ChangeNotifier {
   DateTime? get nextRetryAt => _nextRetryAt;
   DateTime? get lastSyncAttemptAt => _lastSyncAttemptAt;
   DateTime? get lastSyncSuccessAt => _lastSyncSuccessAt;
+  DateTime? get lastSyncOutcomeAt => _lastSyncOutcomeAt;
+  SyncOutcome? get lastSyncOutcome => _lastSyncOutcome;
   String? get lastSyncErrorCode => _lastSyncErrorCode;
   String? get lastSyncErrorMessage => _lastSyncErrorMessage;
   SyncErrorCategory get lastSyncErrorCategory => _lastSyncErrorCategory;
@@ -229,6 +235,8 @@ class AppServicesProvider extends ChangeNotifier {
         _lastSyncErrorCode = null;
         _lastSyncErrorMessage = null;
         _lastSyncErrorCategory = SyncErrorCategory.none;
+        _lastSyncOutcome = SyncOutcome.success;
+        _lastSyncOutcomeAt = _lastSyncedAt;
         _retryCount = 0;
         _nextRetryAt = null;
         _cancelRetry();
@@ -273,6 +281,8 @@ class AppServicesProvider extends ChangeNotifier {
           _nextRetryAt = null;
           _syncStatus = SyncStatus.failed;
           _syncMessage = _failureMessageForCategory(category);
+          _lastSyncOutcome = SyncOutcome.failure;
+          _lastSyncOutcomeAt = DateTime.now();
           notifyListeners();
           _isSyncing = false;
           return;
@@ -285,6 +295,8 @@ class AppServicesProvider extends ChangeNotifier {
           _syncStatus = SyncStatus.failed;
           _syncMessage = 'Sync failed after retries. Please sync manually.';
           _nextRetryAt = null;
+          _lastSyncOutcome = SyncOutcome.failure;
+          _lastSyncOutcomeAt = DateTime.now();
           _recordTelemetry(
             'sync_retry_exhausted',
             _baseTelemetryMetadata(
@@ -559,6 +571,8 @@ class AppServicesProvider extends ChangeNotifier {
   void _loadFromServices() {
     _lastSyncedAt = _cloudSyncService.getLastSyncedAt();
     _lastSyncSuccessAt = _lastSyncedAt;
+    _lastSyncOutcomeAt = _lastSyncedAt;
+    _lastSyncOutcome = _lastSyncedAt == null ? null : SyncOutcome.success;
     _reminderEnabled = _dailyReminderService.isEnabled;
     _reminderTime = _dailyReminderService.reminderTime;
   }

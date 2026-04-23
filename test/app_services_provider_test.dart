@@ -117,6 +117,8 @@ void main() {
       expect(provider.lastSyncedAt, isNotNull);
       expect(fakeSyncService.lastSnapshot, isNotNull);
       expect(provider.syncStatus, SyncStatus.idle);
+      expect(provider.lastSyncOutcome, SyncOutcome.success);
+      expect(provider.lastSyncOutcomeAt, isNotNull);
 
       provider.dispose();
       await connectivity.dispose();
@@ -193,6 +195,8 @@ void main() {
         expect(provider.retryCount, 0);
         expect(provider.nextRetryAt, isNull);
         expect(provider.lastSyncErrorCategory, SyncErrorCategory.validation);
+        expect(provider.lastSyncOutcome, SyncOutcome.failure);
+        expect(provider.lastSyncOutcomeAt, isNotNull);
 
         provider.dispose();
         await connectivity.dispose();
@@ -228,6 +232,8 @@ void main() {
       expect(provider.syncStatus, SyncStatus.idle);
       expect(provider.lastSyncErrorCategory, SyncErrorCategory.none);
       expect(provider.syncSuccessCount, 1);
+      expect(provider.lastSyncOutcome, SyncOutcome.success);
+      expect(provider.lastSyncOutcomeAt, isNotNull);
 
       provider.dispose();
       await connectivity.dispose();
@@ -324,6 +330,8 @@ void main() {
         provider.syncMessage,
         'Sync failed after retries. Please sync manually.',
       );
+      expect(provider.lastSyncOutcome, SyncOutcome.failure);
+      expect(provider.lastSyncOutcomeAt, isNotNull);
 
       final exhaustedEvent = telemetry.events.firstWhere(
         (entry) => entry['event'] == 'sync_retry_exhausted',
