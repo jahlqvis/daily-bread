@@ -648,9 +648,7 @@ class AppServicesProvider extends ChangeNotifier {
     await localDataSource.saveSyncSuccessCount(_syncSuccessCount);
     await localDataSource.saveSyncFailureCount(_syncFailureCount);
     await localDataSource.saveSyncRetryScheduledCount(_syncRetryScheduledCount);
-    await localDataSource.saveSyncLastOutcome(
-      _lastSyncOutcome == null ? null : _lastSyncOutcome!.name,
-    );
+    await localDataSource.saveSyncLastOutcome(_lastSyncOutcome?.name);
     await localDataSource.saveSyncLastOutcomeAt(_lastSyncOutcomeAt);
   }
 
