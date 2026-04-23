@@ -14,6 +14,11 @@ class LocalDataSource {
   static const String _cloudLastSyncedAtKey = 'cloud_last_synced_at';
   static const String _dailyReminderEnabledKey = 'daily_reminder_enabled';
   static const String _dailyReminderTimeKey = 'daily_reminder_time';
+  static const String _syncSuccessCountKey = 'sync_success_count';
+  static const String _syncFailureCountKey = 'sync_failure_count';
+  static const String _syncRetryScheduledCountKey = 'sync_retry_scheduled_count';
+  static const String _syncLastOutcomeKey = 'sync_last_outcome';
+  static const String _syncLastOutcomeAtKey = 'sync_last_outcome_at';
   final SharedPreferences _prefs;
 
   LocalDataSource(this._prefs);
@@ -169,5 +174,57 @@ class LocalDataSource {
 
   Future<void> saveDailyReminderTime(String value) async {
     await _prefs.setString(_dailyReminderTimeKey, value);
+  }
+
+  int getSyncSuccessCount() {
+    return _prefs.getInt(_syncSuccessCountKey) ?? 0;
+  }
+
+  Future<void> saveSyncSuccessCount(int value) async {
+    await _prefs.setInt(_syncSuccessCountKey, value);
+  }
+
+  int getSyncFailureCount() {
+    return _prefs.getInt(_syncFailureCountKey) ?? 0;
+  }
+
+  Future<void> saveSyncFailureCount(int value) async {
+    await _prefs.setInt(_syncFailureCountKey, value);
+  }
+
+  int getSyncRetryScheduledCount() {
+    return _prefs.getInt(_syncRetryScheduledCountKey) ?? 0;
+  }
+
+  Future<void> saveSyncRetryScheduledCount(int value) async {
+    await _prefs.setInt(_syncRetryScheduledCountKey, value);
+  }
+
+  String? getSyncLastOutcome() {
+    return _prefs.getString(_syncLastOutcomeKey);
+  }
+
+  Future<void> saveSyncLastOutcome(String? value) async {
+    if (value == null || value.isEmpty) {
+      await _prefs.remove(_syncLastOutcomeKey);
+      return;
+    }
+    await _prefs.setString(_syncLastOutcomeKey, value);
+  }
+
+  DateTime? getSyncLastOutcomeAt() {
+    final iso = _prefs.getString(_syncLastOutcomeAtKey);
+    if (iso == null || iso.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(iso);
+  }
+
+  Future<void> saveSyncLastOutcomeAt(DateTime? value) async {
+    if (value == null) {
+      await _prefs.remove(_syncLastOutcomeAtKey);
+      return;
+    }
+    await _prefs.setString(_syncLastOutcomeAtKey, value.toIso8601String());
   }
 }

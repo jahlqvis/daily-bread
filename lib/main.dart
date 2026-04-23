@@ -54,7 +54,11 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (_) =>
-              AppServicesProvider(cloudSyncService, dailyReminderService),
+              AppServicesProvider(
+                cloudSyncService,
+                dailyReminderService,
+                localDataSource: localDataSource,
+              ),
         ),
       ],
       child: const DailyBreadApp(),
