@@ -67,6 +67,7 @@ void main() {
 
   testWidgets('shows failed sync status with retry controls', (tester) async {
     String? clipboardText;
+    String? sharedDiagnosticsText;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (methodCall) async {
           if (methodCall.method == 'Clipboard.setData') {
@@ -113,7 +114,14 @@ void main() {
             value: appServicesProvider,
           ),
         ],
-        child: const MaterialApp(home: HomeScreen(enableAutoSync: false)),
+        child: MaterialApp(
+          home: HomeScreen(
+            enableAutoSync: false,
+            onReportSyncDiagnostics: (diagnostics) async {
+              sharedDiagnosticsText = diagnostics;
+            },
+          ),
+        ),
       ),
     );
     await tester.pump();
@@ -154,6 +162,7 @@ void main() {
     expect(find.text('Retries scheduled: 0'), findsOneWidget);
     expect(find.text('Health: Critical'), findsOneWidget);
     expect(find.text('Category: Permission'), findsOneWidget);
+    expect(find.text('Report issue'), findsOneWidget);
 
     await tester.tap(find.text('Copy diagnostics'));
     await tester.pump();
@@ -162,6 +171,14 @@ void main() {
     expect(clipboardText, contains('Health: Critical'));
     expect(clipboardText, contains('Failures: 1'));
     expect(clipboardText, contains('Category: Permission'));
+
+    await tester.tap(find.text('Report issue'));
+    await tester.pump();
+    expect(find.text('Diagnostics ready to share'), findsOneWidget);
+    expect(sharedDiagnosticsText, isNotNull);
+    expect(sharedDiagnosticsText, contains('Health: Critical'));
+    expect(sharedDiagnosticsText, contains('Failures: 1'));
+    expect(sharedDiagnosticsText, contains('Category: Permission'));
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
