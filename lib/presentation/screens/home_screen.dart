@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/user_provider.dart';
@@ -12,6 +13,7 @@ import '../providers/app_services_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/bible_translation.dart';
 import '../widgets/translation_selector.dart';
+import '../utils/sync_diagnostics_formatter.dart';
 import 'reading_screen.dart';
 import 'progress_screen.dart';
 import 'badges_screen.dart';
@@ -21,9 +23,14 @@ import 'reading_plans_screen.dart';
 import 'bookmarks_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.enableAutoSync = true});
+  const HomeScreen({
+    super.key,
+    this.enableAutoSync = true,
+    this.onReportSyncDiagnostics,
+  });
 
   final bool enableAutoSync;
+  final Future<void> Function(String diagnostics)? onReportSyncDiagnostics;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -1083,8 +1090,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           actions: [
             TextButton(
               onPressed: () async {
+                final diagnostics = _syncDiagnosticsText(servicesProvider);
                 await Clipboard.setData(
-                  ClipboardData(text: _syncDiagnosticsText(servicesProvider)),
+                  ClipboardData(text: diagnostics),
                 );
                 if (!parentContext.mounted) {
                   return;
@@ -1099,6 +1107,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: const Text('Copy diagnostics'),
             ),
             TextButton(
+              onPressed: () async {
+                final diagnostics = _syncDiagnosticsText(servicesProvider);
+                try {
+                  if (widget.onReportSyncDiagnostics != null) {
+                    await widget.onReportSyncDiagnostics!(diagnostics);
+                  } else {
+                    await Share.share(
+                      diagnostics,
+                      subject: 'DailyBread Sync Diagnostics',
+                    );
+                  }
+                  if (!parentContext.mounted) {
+                    return;
+                  }
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Diagnostics ready to share'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                } catch (_) {
+                  if (!parentContext.mounted) {
+                    return;
+                  }
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Sharing not available'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Report issue'),
+            ),
+            TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Close'),
             ),
@@ -1109,28 +1152,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   String _syncDiagnosticsText(AppServicesProvider servicesProvider) {
-    final attempted = servicesProvider.lastSyncAttemptAt;
-    final lastSuccess = servicesProvider.lastSyncSuccessAt;
-    final lastOutcomeAt = servicesProvider.lastSyncOutcomeAt;
-    final nextRetryAt = servicesProvider.nextRetryAt;
-
-    return [
-      'Backend: ${servicesProvider.cloudBackendLabel}',
-      'Status: ${servicesProvider.syncStatus.name}',
-      'Health: ${servicesProvider.syncHealthLabel}',
-      'Offline: ${servicesProvider.isOffline}',
-      'Category: ${_syncCategoryLabel(servicesProvider.lastSyncErrorCategory)}',
-      'Code: ${servicesProvider.lastSyncErrorCode ?? 'unknown'}',
-      'Retry attempts: ${servicesProvider.retryCount}',
-      'Successes: ${servicesProvider.syncSuccessCount}',
-      'Failures: ${servicesProvider.syncFailureCount}',
-      'Retries scheduled: ${servicesProvider.syncRetryScheduledCount}',
-      'Last attempt: ${attempted == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(attempted)}',
-      'Last success: ${lastSuccess == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(lastSuccess)}',
-      'Last outcome: ${servicesProvider.lastSyncOutcome == null || lastOutcomeAt == null ? 'N/A' : '${servicesProvider.lastSyncOutcome!.name} at ${DateFormat('MMM d, HH:mm:ss').format(lastOutcomeAt)}'}',
-      'Next retry: ${nextRetryAt == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(nextRetryAt)}',
-      'Error: ${servicesProvider.lastSyncErrorMessage ?? 'N/A'}',
-    ].join('\n');
+    final diagnostics = buildSyncDiagnosticsText(
+      backend: servicesProvider.cloudBackendLabel,
+      status: servicesProvider.syncStatus.name,
+      health: servicesProvider.syncHealthLabel,
+      isOffline: servicesProvider.isOffline,
+      category: _syncCategoryLabel(servicesProvider.lastSyncErrorCategory),
+      code: servicesProvider.lastSyncErrorCode ?? 'unknown',
+      retryAttempts: servicesProvider.retryCount,
+      successes: servicesProvider.syncSuccessCount,
+      failures: servicesProvider.syncFailureCount,
+      retriesScheduled: servicesProvider.syncRetryScheduledCount,
+      lastAttemptAt: servicesProvider.lastSyncAttemptAt,
+      lastSuccessAt: servicesProvider.lastSyncSuccessAt,
+      lastOutcome: servicesProvider.lastSyncOutcome?.name,
+      lastOutcomeAt: servicesProvider.lastSyncOutcomeAt,
+      nextRetryAt: servicesProvider.nextRetryAt,
+      error: servicesProvider.lastSyncErrorMessage ?? 'N/A',
+    );
+    return redactSyncDiagnosticsText(diagnostics);
   }
 
   Color _syncStatusColor(AppServicesProvider servicesProvider) {
