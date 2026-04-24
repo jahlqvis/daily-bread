@@ -1113,11 +1113,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   if (widget.onReportSyncDiagnostics != null) {
                     await widget.onReportSyncDiagnostics!(diagnostics);
                   } else {
-                    await SharePlus.instance.share(
-                      ShareParams(
-                        subject: 'DailyBread Sync Diagnostics',
-                        text: diagnostics,
-                      ),
+                    await Share.share(
+                      diagnostics,
+                      subject: 'DailyBread Sync Diagnostics',
                     );
                   }
                   if (!parentContext.mounted) {
