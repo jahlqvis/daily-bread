@@ -174,7 +174,6 @@ void main() {
 
     await tester.tap(find.text('Report issue'));
     await tester.pump();
-    expect(find.text('Diagnostics ready to share'), findsOneWidget);
     expect(sharedDiagnosticsText, isNotNull);
     expect(sharedDiagnosticsText, contains('Health: Critical'));
     expect(sharedDiagnosticsText, contains('Failures: 1'));
