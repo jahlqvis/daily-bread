@@ -570,6 +570,21 @@ class AppServicesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> resetSyncDiagnostics() async {
+    _syncSuccessCount = 0;
+    _syncFailureCount = 0;
+    _syncRetryScheduledCount = 0;
+    _lastSyncOutcome = null;
+    _lastSyncOutcomeAt = null;
+    _syncStatus = SyncStatus.idle;
+    _syncMessage = null;
+    _lastSyncErrorCode = null;
+    _lastSyncErrorMessage = null;
+    _lastSyncErrorCategory = SyncErrorCategory.none;
+    await _persistSyncTelemetryState();
+    notifyListeners();
+  }
+
   Future<void> setReminderEnabled(bool enabled) async {
     try {
       await _dailyReminderService.setEnabled(enabled);

@@ -493,5 +493,44 @@ void main() {
       provider.dispose();
       await connectivity.dispose();
     });
+
+    test('resetSyncDiagnostics clears counters and outcome but preserves lastSyncedAt', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+        localDataSource: localDataSource,
+      );
+
+      fakeSyncService.enqueueError(
+        FirebaseException(plugin: 'cloud_functions', code: 'permission-denied'),
+      );
+      await provider.syncNow(user: UserModel(totalXp: 5), bookmarks: const []);
+      expect(provider.syncFailureCount, 1);
+      expect(provider.syncHealth, SyncHealth.critical);
+      expect(provider.lastSyncErrorCode, 'permission-denied');
+
+      await provider.resetSyncDiagnostics();
+
+      expect(provider.syncSuccessCount, 0);
+      expect(provider.syncFailureCount, 0);
+      expect(provider.syncRetryScheduledCount, 0);
+      expect(provider.syncHealth, SyncHealth.unknown);
+      expect(provider.lastSyncOutcome, isNull);
+      expect(provider.lastSyncOutcomeAt, isNull);
+      expect(provider.lastSyncErrorCode, isNull);
+      expect(provider.lastSyncErrorMessage, isNull);
+      expect(provider.lastSyncErrorCategory, SyncErrorCategory.none);
+      expect(provider.syncStatus, SyncStatus.idle);
+
+      provider.dispose();
+      await connectivity.dispose();
+    });
   });
 }
