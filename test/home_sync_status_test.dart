@@ -179,6 +179,21 @@ void main() {
     expect(sharedDiagnosticsText, contains('Failures: 1'));
     expect(sharedDiagnosticsText, contains('Category: Permission'));
 
+    await tester.tap(find.text('Reset diagnostics'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Sync details'), findsNothing);
+    expect(find.text('Status: Synced'), findsOneWidget);
+    expect(
+      find.text('Successes: 0 • Failures: 0 • Retries scheduled: 0'),
+      findsOneWidget,
+    );
+    expect(find.text('Last outcome: N/A'), findsOneWidget);
+    expect(find.text('Sync health: Unknown'), findsOneWidget);
+    expect(find.text('Retry now'), findsNothing);
+    expect(find.text('View details'), findsNothing);
+
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
 

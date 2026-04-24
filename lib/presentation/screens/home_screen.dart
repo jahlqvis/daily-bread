@@ -1057,35 +1057,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Sync details'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Status: ${servicesProvider.syncStatus.name}'),
-              Text('Health: ${servicesProvider.syncHealthLabel}'),
-              Text(
-                'Category: ${_syncCategoryLabel(servicesProvider.lastSyncErrorCategory)}',
-              ),
-              Text('Code: ${servicesProvider.lastSyncErrorCode ?? 'unknown'}'),
-              Text('Successes: ${servicesProvider.syncSuccessCount}'),
-              Text('Failures: ${servicesProvider.syncFailureCount}'),
-              Text(
-                'Retries scheduled: ${servicesProvider.syncRetryScheduledCount}',
-              ),
-              Text('Last outcome: ${_syncOutcomeLabel(servicesProvider)}'),
-              Text('Retry attempts: ${servicesProvider.retryCount}'),
-              Text(
-                'Last attempt: ${attempted == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(attempted)}',
-              ),
-              Text(
-                'Last success: ${lastSuccess == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(lastSuccess)}',
-              ),
-              Text(
-                'Next retry: ${nextRetryAt == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(nextRetryAt)}',
-              ),
-              const SizedBox(height: 8),
-              Text('Error: $errorMessage'),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Status: ${servicesProvider.syncStatus.name}'),
+                Text('Health: ${servicesProvider.syncHealthLabel}'),
+                Text(
+                  'Category: ${_syncCategoryLabel(servicesProvider.lastSyncErrorCategory)}',
+                ),
+                Text('Code: ${servicesProvider.lastSyncErrorCode ?? 'unknown'}'),
+                Text('Successes: ${servicesProvider.syncSuccessCount}'),
+                Text('Failures: ${servicesProvider.syncFailureCount}'),
+                Text(
+                  'Retries scheduled: ${servicesProvider.syncRetryScheduledCount}',
+                ),
+                Text('Last outcome: ${_syncOutcomeLabel(servicesProvider)}'),
+                Text('Retry attempts: ${servicesProvider.retryCount}'),
+                Text(
+                  'Last attempt: ${attempted == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(attempted)}',
+                ),
+                Text(
+                  'Last success: ${lastSuccess == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(lastSuccess)}',
+                ),
+                Text(
+                  'Next retry: ${nextRetryAt == null ? 'N/A' : DateFormat('MMM d, HH:mm:ss').format(nextRetryAt)}',
+                ),
+                const SizedBox(height: 8),
+                Text('Error: $errorMessage'),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -1140,6 +1142,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 }
               },
               child: const Text('Report issue'),
+            ),
+            TextButton(
+              onPressed: servicesProvider.isSyncing
+                  ? null
+                  : () async {
+                      await servicesProvider.resetSyncDiagnostics();
+                      if (!parentContext.mounted) {
+                        return;
+                      }
+                      Navigator.of(dialogContext).pop();
+                      ScaffoldMessenger.of(parentContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('Diagnostics reset'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+              child: const Text('Reset diagnostics'),
             ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
