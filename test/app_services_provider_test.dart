@@ -36,6 +36,8 @@ class _FakeConnectivity implements SyncConnectivity {
 class _FakeCloudSyncService implements CloudSyncService {
   final DateTime Function() _nowProvider;
   final Queue<Object> _errors = Queue<Object>();
+  final Queue<Completer<void>> _callBlocks = Queue<Completer<void>>();
+  final List<CloudSyncSnapshot> snapshots = [];
 
   CloudSyncSnapshot? _lastSnapshot;
   DateTime? _lastSyncedAt;
@@ -60,6 +62,10 @@ class _FakeCloudSyncService implements CloudSyncService {
   Future<DateTime> syncSnapshot(CloudSyncSnapshot snapshot) async {
     callCount += 1;
     _lastSnapshot = snapshot;
+    snapshots.add(snapshot);
+    if (_callBlocks.isNotEmpty) {
+      await _callBlocks.removeFirst().future;
+    }
     if (_errors.isNotEmpty) {
       throw _errors.removeFirst();
     }
@@ -70,6 +76,12 @@ class _FakeCloudSyncService implements CloudSyncService {
 
   void enqueueError(Object error) {
     _errors.add(error);
+  }
+
+  Completer<void> blockNextCall() {
+    final completer = Completer<void>();
+    _callBlocks.add(completer);
+    return completer;
   }
 
   CloudSyncSnapshot? get lastSnapshot => _lastSnapshot;
@@ -379,6 +391,177 @@ void main() {
 
       expect(fakeSyncService.callCount, 1);
       expect(provider.syncStatus, SyncStatus.idle);
+
+      provider.dispose();
+      await connectivity.dispose();
+    });
+
+    test('coalesces rapid sync requests while a sync is in flight', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+        localDataSource: localDataSource,
+      );
+
+      final firstCallGate = fakeSyncService.blockNextCall();
+      final firstSync = provider.syncNow(
+        user: UserModel(totalXp: 10),
+        bookmarks: const [],
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(fakeSyncService.callCount, 1);
+      expect(provider.syncStatus, SyncStatus.syncing);
+
+      await provider.syncNow(user: UserModel(totalXp: 20), bookmarks: const []);
+      await provider.syncNow(user: UserModel(totalXp: 30), bookmarks: const []);
+
+      firstCallGate.complete();
+      await firstSync;
+
+      expect(fakeSyncService.callCount, 2);
+      expect(fakeSyncService.snapshots.length, 2);
+      expect(fakeSyncService.snapshots.first.user.totalXp, 10);
+      expect(fakeSyncService.snapshots.last.user.totalXp, 30);
+      expect(provider.syncStatus, SyncStatus.idle);
+      expect(provider.retryCount, 0);
+
+      provider.dispose();
+      await connectivity.dispose();
+    });
+
+    test('manual immediate sync cancels scheduled retry timer', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+
+      fakeSyncService.enqueueError(
+        FirebaseException(plugin: 'cloud_functions', code: 'unavailable'),
+      );
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+        localDataSource: localDataSource,
+        baseRetryDelay: const Duration(milliseconds: 120),
+        maxRetryDelay: const Duration(milliseconds: 120),
+      );
+
+      await provider.syncNow(user: UserModel(totalXp: 10), bookmarks: const []);
+
+      expect(provider.syncStatus, SyncStatus.retrying);
+      expect(provider.retryCount, 1);
+      expect(provider.nextRetryAt, isNotNull);
+      expect(fakeSyncService.callCount, 1);
+
+      await provider.syncNow(
+        user: UserModel(totalXp: 11),
+        bookmarks: const [],
+        reason: 'manual_retry',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+
+      expect(fakeSyncService.callCount, 2);
+      expect(provider.syncStatus, SyncStatus.idle);
+      expect(provider.retryCount, 0);
+      expect(provider.nextRetryAt, isNull);
+
+      provider.dispose();
+      await connectivity.dispose();
+    });
+
+    test('offline flap during retry window does not trigger duplicate sync', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+
+      fakeSyncService.enqueueError(
+        FirebaseException(plugin: 'cloud_functions', code: 'unavailable'),
+      );
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+        localDataSource: localDataSource,
+        baseRetryDelay: const Duration(milliseconds: 150),
+        maxRetryDelay: const Duration(milliseconds: 150),
+      );
+
+      await provider.syncNow(user: UserModel(totalXp: 10), bookmarks: const []);
+      expect(provider.syncStatus, SyncStatus.retrying);
+      expect(fakeSyncService.callCount, 1);
+
+      connectivity.setOffline(true);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(provider.syncStatus, SyncStatus.pending);
+
+      connectivity.setOffline(false);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(fakeSyncService.callCount, 2);
+      expect(provider.syncStatus, SyncStatus.idle);
+      expect(provider.retryCount, 0);
+
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(fakeSyncService.callCount, 2);
+
+      provider.dispose();
+      await connectivity.dispose();
+    });
+
+    test('offline queue keeps only latest sync request payload', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final localDataSource = LocalDataSource(prefs);
+      final fakeSyncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(true);
+
+      final provider = AppServicesProvider(
+        fakeSyncService,
+        LocalReminderService(localDataSource),
+        syncConnectivity: connectivity,
+        localDataSource: localDataSource,
+      );
+
+      await provider.requestSync(
+        user: UserModel(totalXp: 1),
+        bookmarks: const [],
+        reason: 'launch',
+      );
+      await provider.requestSync(
+        user: UserModel(totalXp: 2),
+        bookmarks: const [],
+        reason: 'bookmark_change',
+      );
+      await provider.syncNow(
+        user: UserModel(totalXp: 3),
+        bookmarks: const [],
+        reason: 'manual',
+      );
+
+      expect(fakeSyncService.callCount, 0);
+      expect(provider.syncStatus, SyncStatus.pending);
+
+      connectivity.setOffline(false);
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+
+      expect(fakeSyncService.callCount, 1);
+      expect(fakeSyncService.lastSnapshot?.user.totalXp, 3);
+      expect(provider.syncStatus, SyncStatus.idle);
+      expect(provider.retryCount, 0);
 
       provider.dispose();
       await connectivity.dispose();
