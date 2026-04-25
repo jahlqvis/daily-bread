@@ -309,9 +309,9 @@ class FirebaseCloudSyncService implements CloudSyncService {
   final LocalDataSource _localDataSource;
   final FirebaseBackendConfig _config;
   final CloudSyncService _fallback;
-  final FirebaseAuth _firebaseAuth;
-  final FirebaseFirestore _firebaseFirestore;
-  final FirebaseFunctions _firebaseFunctions;
+  final FirebaseAuth? _injectedFirebaseAuth;
+  final FirebaseFirestore? _injectedFirebaseFirestore;
+  final FirebaseFunctions? _injectedFirebaseFunctions;
 
   bool _initialized = false;
   bool _isAvailable = false;
@@ -328,10 +328,16 @@ class FirebaseCloudSyncService implements CloudSyncService {
   }) : _localDataSource = localDataSource,
        _config = config,
        _fallback = fallback,
-       _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance,
-       _firebaseFirestore = firebaseFirestore ?? FirebaseFirestore.instance,
-       _firebaseFunctions = firebaseFunctions ?? FirebaseFunctions.instance,
+       _injectedFirebaseAuth = firebaseAuth,
+       _injectedFirebaseFirestore = firebaseFirestore,
+       _injectedFirebaseFunctions = firebaseFunctions,
        _nowProvider = nowProvider ?? DateTime.now;
+
+  FirebaseAuth get _firebaseAuth => _injectedFirebaseAuth ?? FirebaseAuth.instance;
+  FirebaseFirestore get _firebaseFirestore =>
+      _injectedFirebaseFirestore ?? FirebaseFirestore.instance;
+  FirebaseFunctions get _firebaseFunctions =>
+      _injectedFirebaseFunctions ?? FirebaseFunctions.instance;
 
   @override
   bool get isAvailable => _isAvailable;
