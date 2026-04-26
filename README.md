@@ -1,91 +1,104 @@
 # DailyBread
 
-DailyBread is a Flutter-based mobile app that gamifies Bible reading with streaks, XP, levels, and badges. The project currently targets iOS simulator and Web, with Android and production deployments planned later.
+DailyBread is a Flutter app for daily Bible reading with gamification (streaks, XP, levels, badges), local-first data storage, and Firebase-backed cloud sync.
 
-## Prerequisites
+It is designed to work even when Firebase is not configured by falling back to local backup behavior.
 
-- Flutter SDK cloned to `~/flutter` (stable channel)
-- Xcode 26.4 with command-line tools selected (`sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`)
-- CocoaPods (`sudo gem install cocoapods` if missing)
+## Features
 
-After cloning/moving the repo, run:
+- Daily reading flow with plan tracking and translation support (`KJV`, `ASV`, `WEB`)
+- Gamified user progress: streaks, XP, levels, badges
+- Bookmarking with tombstones for delete conflict handling
+- Cloud sync with pull/merge, retry/backoff, offline queueing, and lifecycle-triggered auto-sync
+- Sync diagnostics in-app (`View details`, `Copy diagnostics`, `Report issue`, `Reset diagnostics`)
+- Balanced diagnostics redaction for share/report workflows
+- CI coverage for Flutter analyze/tests/web build, Android debug build, iOS simulator build, and Cloud Functions tests
+
+## Tech Stack
+
+- Flutter + Provider for app state
+- SharedPreferences for local persistence
+- Firebase Auth, Firestore, and Cloud Functions for cloud sync
+- `connectivity_plus` for offline awareness
+- `flutter_local_notifications` for reminder scheduling
+- GitHub Actions for CI
+
+## Project Structure
+
+- `lib/main.dart` - app bootstrap and provider wiring
+- `lib/presentation/providers/` - state orchestration (including sync/retry telemetry)
+- `lib/presentation/screens/` - UI screens and sync UX
+- `lib/services/cloud/` - local and Firebase cloud sync services + merge logic
+- `lib/presentation/utils/sync_diagnostics_formatter.dart` - diagnostics formatting + redaction
+- `lib/data/` - models, local data source, repositories
+- `functions/` - Firebase Cloud Functions (server authority for sync)
+- `.github/workflows/flutter.yml` - CI pipeline
+
+## Getting Started
+
+### Prerequisites
+
+- Flutter stable
+- Xcode (for iOS simulator builds)
+- CocoaPods (`pod`)
+- Node.js (for Cloud Functions tests)
+
+### Install dependencies
 
 ```bash
-~/flutter/bin/flutter pub get
-(cd ios && pod install)
+flutter pub get
+cd ios && pod install
 ```
 
-## Project layout
-
-- `lib/` – app code (Providers for user/Bible state, screens for dashboard, reading, badges, etc.)
-- `assets/` – `bible/kjv_books`, `bible/asv_books`, and `bible/web_books` contain per-book JSON for KJV, ASV, and WEB translations
-- `scripts/` – helper scripts for iOS builds (`xcode_backend_wrapper.sh`, `run_ios_sim.sh`)
-
-## Bible data & translations
-
-- Translation selector (globe icon) lets you switch between `KJV`, `ASV`, and `WEB` anywhere you enter the reading flow. The choice persists while the app is open.
-- The per-book datasets are generated via:
-  - `dart run tool/generate_bible_books.dart kjv asv` – downloads Scrollmapper JSON for the KJV/ASV and writes per-book assets
-  - `dart run tool/import_web_translation.dart` – downloads the WEB HTML archive from eBible.org, parses every chapter, and emits `web_books/*.json`
-- Each JSON file has the shape `{ "name": "Genesis", "chapters": [ { "chapter": 1, "verses": [ { "verse": 1, "text": "..." } ] } ] }`
-
-## Running on iOS Simulator
-
-Xcode 26.x on macOS 15 refuses to sign artifacts that contain Finder metadata. Flutter's default `flutter run` still triggers that signing step, so we use a wrapper flow:
-
-1. Ensure the simulator you want to target is created/booted (`xcrun simctl list devices`).
-2. Execute the helper script with the simulator UDID (or name):
-   ```bash
-   scripts/run_ios_sim.sh DED5E049-5053-48EA-ACD8-842C1C8C81B5
-   ```
-   - The script runs `xcodebuild` with `CODE_SIGNING_ALLOWED=NO`, writes build logs to `/tmp/run_ios_sim_build.log`, and places artifacts in `build/flutter-ios`.
-   - After a successful build it installs the resulting `Runner.app` onto the simulator and launches `com.dailybread.dailyBread` via `xcrun simctl launch`.
-3. Attach Flutter DevTools if desired: `~/flutter/bin/flutter attach -d <SIM-UDID>`.
-
-If the build fails, inspect `/tmp/run_ios_sim_build.log`. Common fixes:
-
-- Delete stale caches (`rm -rf .dart_tool build/flutter-ios ios/Flutter/ephemeral`) and rerun `flutter pub get` + `pod install`.
-- Ensure `ios/Flutter/Generated.xcconfig` points `FLUTTER_APPLICATION_PATH` and `PACKAGE_CONFIG` to this repo (`/Users/<you>/Documents/Repos/ProjectX`). If the project is moved, rerun `flutter pub get` to regenerate.
-
-## Web build
+### Run locally
 
 ```bash
-~/flutter/bin/flutter build web
+flutter run
 ```
 
-The output lives in `build/web/` and has been verified locally.
+### Run on iOS simulator
 
-## Continuous Integration
-
-- `.github/workflows/flutter.yml` runs on every push/PR to `master`.
-- Job 1 (`Analyze, Test & Web Build`) runs on Ubuntu, executes `flutter pub get`, `flutter analyze`, `flutter test`, and `flutter build web --release` with cached pub packages.
-- Job 2 (`iOS Simulator Build`) runs on `macos-15`, caches CocoaPods, installs pods, and runs `xcodebuild … CODE_SIGNING_ALLOWED=NO`.
-
-### CI stability notes
-
-- Firebase iOS pins were removed after validating the macOS 15 runner and updated FlutterFire constraints.
-- Keep dependency/toolchain upgrades in a dedicated branch and validate full CI before merging.
-
-## Git workflow notes
-
-- Use short-lived feature/fix branches and PRs for all work, including CI hotfixes.
-- Avoid direct pushes to `master` unless urgent and coordinated.
-- If `master` is force-pushed (history rewrite), resync local clones with:
+If Xcode is freshly installed, run once:
 
 ```bash
-git fetch origin
-git checkout master
-git reset --hard origin/master
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -runFirstLaunch
 ```
 
-## Firebase cloud sync MVP
-
-- The app now supports a Firebase-backed sync path with anonymous auth and Firestore upload during `Sync now`.
-- If Firebase is not configured, the app automatically falls back to local backup mode.
-- Configure Firebase using `--dart-define` values (core values are required):
+Then:
 
 ```bash
-~/flutter/bin/flutter run \
+open -a Simulator
+flutter devices
+flutter run -d <SIMULATOR_UDID>
+```
+
+## Firebase Configuration (Optional but Recommended)
+
+Cloud sync can be enabled with compile-time `--dart-define` values.
+
+Required core values:
+
+- `FIREBASE_API_KEY`
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_MESSAGING_SENDER_ID`
+
+Platform app IDs (recommended):
+
+- `FIREBASE_ANDROID_APP_ID`
+- `FIREBASE_IOS_APP_ID`
+- `FIREBASE_WEB_APP_ID`
+
+Optional:
+
+- `FIREBASE_STORAGE_BUCKET`
+- `FIREBASE_AUTH_DOMAIN`
+- `FIREBASE_IOS_BUNDLE_ID`
+
+Example:
+
+```bash
+flutter run \
   --dart-define=FIREBASE_API_KEY=... \
   --dart-define=FIREBASE_PROJECT_ID=... \
   --dart-define=FIREBASE_MESSAGING_SENDER_ID=... \
@@ -93,24 +106,57 @@ git reset --hard origin/master
   --dart-define=FIREBASE_IOS_APP_ID=...
 ```
 
-- Optional defines: `FIREBASE_WEB_APP_ID`, `FIREBASE_STORAGE_BUCKET`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_IOS_BUNDLE_ID`.
-- Firestore rules are defined in `firestore.rules` and referenced by `firebase.json`.
-- Deploy/update rules with Firebase CLI:
+If these values are missing, DailyBread runs with local fallback sync.
+
+## Cloud Sync Notes
+
+- Snapshot model: user state + bookmarks + tombstones
+- Merge strategy combines local and remote snapshots with timestamp-based conflict resolution
+- Retry behavior uses backoff with max attempt limits
+- Offline requests are queued and drained when connectivity returns
+- Sync telemetry tracks success/failure/retry counts and last outcome for UX/diagnostics
+
+## Testing
+
+Run all Flutter checks:
 
 ```bash
-firebase deploy --only firestore:rules
+flutter analyze
+flutter test
 ```
 
-- Cloud Functions source lives in `functions/` with callable `syncUserState` as the server-side conflict authority for sync.
-- Install function dependencies and deploy:
+Run Functions tests:
 
 ```bash
-cd functions && npm install
-firebase deploy --only functions
+cd functions && npm test
 ```
 
-## Next steps
+## CI
 
-1. Use server-side conflict resolution in Cloud Functions to remove remaining client clock skew edge cases.
-2. Expand the translation selector with reading plans or translation-specific study notes.
-3. Prepare Android + App Store distribution tooling once Apple resolves the macOS 15 signing bug (or after downgrading to Xcode 15).
+`Flutter CI` runs on push/PR to `master` and includes:
+
+- `Functions Tests` (Node)
+- `Analyze, Test & Web Build` (Flutter)
+- `Android Debug Build`
+- `iOS Simulator Build (codesign disabled)`
+
+Workflow file: `.github/workflows/flutter.yml`.
+
+## Useful Commands
+
+```bash
+# Local quality gate
+flutter analyze && flutter test
+
+# Web build
+flutter build web --release
+
+# Android debug build
+flutter build apk --debug
+```
+
+## Contributing
+
+- Prefer small, focused PRs
+- Keep CI green before merge
+- Add/adjust tests with behavioral changes (especially sync/retry/offline logic)
