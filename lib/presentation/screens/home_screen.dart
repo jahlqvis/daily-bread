@@ -21,6 +21,7 @@ import 'book_selection_screen.dart';
 import 'verse_search_screen.dart';
 import 'reading_plans_screen.dart';
 import 'bookmarks_screen.dart';
+import 'sign_in_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -192,6 +193,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         title: const Text('DailyBread'),
         actions: [
           const TranslationSelector(),
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SignInScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () => Navigator.push(
