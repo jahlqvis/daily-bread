@@ -11,7 +11,9 @@ import 'presentation/providers/bible_provider.dart';
 import 'presentation/providers/reading_plan_provider.dart';
 import 'presentation/providers/bookmarks_provider.dart';
 import 'presentation/providers/app_services_provider.dart';
+import 'presentation/providers/auth_provider.dart';
 import 'presentation/screens/home_screen.dart';
+import 'services/auth/firebase_auth_service.dart';
 import 'services/cloud/cloud_sync_service.dart';
 import 'services/cloud/firebase_backend_config.dart';
 import 'services/notifications/daily_reminder_service.dart';
@@ -23,6 +25,7 @@ void main() async {
   final localDataSource = LocalDataSource(prefs);
   final bibleDataSource = BibleDataSource();
   final userRepository = UserRepository(localDataSource);
+  final authService = FirebaseAuthService();
   final localCloudSyncService = LocalCloudSyncService(localDataSource);
   final cloudSyncService = FirebaseCloudSyncService(
     localDataSource: localDataSource,
@@ -52,6 +55,7 @@ void main() async {
         ChangeNotifierProvider(
           create: (_) => BookmarksProvider(localDataSource)..loadBookmarks(),
         ),
+        ChangeNotifierProvider(create: (_) => AuthProvider(authService)),
         ChangeNotifierProvider(
           create: (_) =>
               AppServicesProvider(
