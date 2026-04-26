@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+const int syncDiagnosticsVersion = 1;
+
 String buildSyncDiagnosticsText({
   required String backend,
   required String status,
@@ -25,6 +27,7 @@ String buildSyncDiagnosticsText({
       : '$lastOutcome at ${formatter.format(lastOutcomeAt)}';
 
   return [
+    'Diagnostics Version: $syncDiagnosticsVersion',
     'Backend: $backend',
     'Status: $status',
     'Health: $health',
