@@ -147,6 +147,7 @@ Workflow file: `.github/workflows/flutter.yml`.
 Use the release readiness checklist before high-impact merges or release candidates:
 
 - `docs/release-checklist.md`
+- `docs/device-smoke-test.md`
 
 ## Useful Commands
 

@@ -2,6 +2,8 @@
 
 Use this checklist before merging high-impact changes or cutting a release candidate.
 
+For real-device coverage and internal distribution prerequisites, use `docs/device-smoke-test.md` in addition to this checklist.
+
 ## 1) Environment
 
 - Working tree is clean (or only intentional changes are present)
