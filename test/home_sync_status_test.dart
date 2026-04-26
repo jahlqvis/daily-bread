@@ -20,7 +20,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeConnectivity implements SyncConnectivity {
-  final bool _offline;
+  bool _offline;
   final StreamController<bool> _controller = StreamController<bool>.broadcast();
 
   _FakeConnectivity(this._offline);
@@ -31,6 +31,11 @@ class _FakeConnectivity implements SyncConnectivity {
   @override
   Stream<bool> get onOfflineChanged => _controller.stream;
 
+  void setOffline(bool value) {
+    _offline = value;
+    _controller.add(value);
+  }
+
   Future<void> dispose() async {
     await _controller.close();
   }
@@ -38,6 +43,10 @@ class _FakeConnectivity implements SyncConnectivity {
 
 class _FakeCloudSyncService implements CloudSyncService {
   Object? nextError;
+  final List<CloudSyncSnapshot> snapshots = [];
+  final List<Completer<void>> _callBlocks = [];
+  final List<Object> _errors = [];
+  int callCount = 0;
 
   @override
   bool get isAvailable => true;
@@ -53,13 +62,130 @@ class _FakeCloudSyncService implements CloudSyncService {
 
   @override
   Future<DateTime> syncSnapshot(CloudSyncSnapshot snapshot) async {
-    final error = nextError;
+    callCount += 1;
+    snapshots.add(snapshot);
+    if (_callBlocks.isNotEmpty) {
+      await _callBlocks.removeAt(0).future;
+    }
+
+    final error = _errors.isNotEmpty ? _errors.removeAt(0) : nextError;
     nextError = null;
     if (error != null) {
       throw error;
     }
     return DateTime.now();
   }
+
+  void enqueueError(Object error) {
+    _errors.add(error);
+  }
+
+  Completer<void> blockNextCall() {
+    final completer = Completer<void>();
+    _callBlocks.add(completer);
+    return completer;
+  }
+}
+
+class _FakeSyncTelemetry implements SyncTelemetry {
+  final List<Map<String, Object?>> events = [];
+
+  @override
+  void record(String event, Map<String, Object?> metadata) {
+    events.add({'event': event, ...metadata});
+  }
+}
+
+class _HomeTestHarness {
+  final LocalDataSource localDataSource;
+  final _FakeCloudSyncService syncService;
+  final _FakeConnectivity connectivity;
+  final UserProvider userProvider;
+  final ReadingPlanProvider planProvider;
+  final BookmarksProvider bookmarksProvider;
+  final AppServicesProvider appServicesProvider;
+
+  _HomeTestHarness({
+    required this.localDataSource,
+    required this.syncService,
+    required this.connectivity,
+    required this.userProvider,
+    required this.planProvider,
+    required this.bookmarksProvider,
+    required this.appServicesProvider,
+  });
+
+  Future<void> dispose() async {
+    appServicesProvider.dispose();
+    await connectivity.dispose();
+  }
+}
+
+Future<_HomeTestHarness> _pumpHome(
+  WidgetTester tester, {
+  required _FakeCloudSyncService syncService,
+  required _FakeConnectivity connectivity,
+  bool enableAutoSync = false,
+  Future<void> Function(String diagnostics)? onReportSyncDiagnostics,
+  Duration? baseRetryDelay,
+  Duration? maxRetryDelay,
+  SyncTelemetry? telemetry,
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  final prefs = await SharedPreferences.getInstance();
+  final localDataSource = LocalDataSource(prefs);
+
+  final userProvider = UserProvider(UserRepository(localDataSource));
+  final planProvider = ReadingPlanProvider(localDataSource);
+  final bookmarksProvider = BookmarksProvider(localDataSource);
+  final appServicesProvider = AppServicesProvider(
+    syncService,
+    LocalReminderService(localDataSource),
+    syncConnectivity: connectivity,
+    localDataSource: localDataSource,
+    syncTelemetry: telemetry,
+    baseRetryDelay: baseRetryDelay ?? const Duration(seconds: 2),
+    maxRetryDelay: maxRetryDelay ?? const Duration(minutes: 5),
+  );
+
+  await Future.wait([
+    userProvider.loadUser(),
+    planProvider.loadPlanState(),
+    bookmarksProvider.loadBookmarks(),
+  ]);
+
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<BibleProvider>.value(
+          value: BibleProvider(BibleDataSource()),
+        ),
+        ChangeNotifierProvider<UserProvider>.value(value: userProvider),
+        ChangeNotifierProvider<ReadingPlanProvider>.value(value: planProvider),
+        ChangeNotifierProvider<BookmarksProvider>.value(value: bookmarksProvider),
+        ChangeNotifierProvider<AppServicesProvider>.value(
+          value: appServicesProvider,
+        ),
+      ],
+      child: MaterialApp(
+        home: HomeScreen(
+          enableAutoSync: enableAutoSync,
+          onReportSyncDiagnostics: onReportSyncDiagnostics,
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+
+  return _HomeTestHarness(
+    localDataSource: localDataSource,
+    syncService: syncService,
+    connectivity: connectivity,
+    userProvider: userProvider,
+    planProvider: planProvider,
+    bookmarksProvider: bookmarksProvider,
+    appServicesProvider: appServicesProvider,
+  );
 }
 
 void main() {
@@ -77,54 +203,17 @@ void main() {
           return null;
         });
 
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
-    final localDataSource = LocalDataSource(prefs);
     final fakeSyncService = _FakeCloudSyncService();
     final connectivity = _FakeConnectivity(false);
-
-    final bibleProvider = BibleProvider(BibleDataSource());
-    final userProvider = UserProvider(UserRepository(localDataSource));
-    final planProvider = ReadingPlanProvider(localDataSource);
-    final bookmarksProvider = BookmarksProvider(localDataSource);
-    final appServicesProvider = AppServicesProvider(
-      fakeSyncService,
-      LocalReminderService(localDataSource),
-      syncConnectivity: connectivity,
+    final harness = await _pumpHome(
+      tester,
+      syncService: fakeSyncService,
+      connectivity: connectivity,
+      enableAutoSync: false,
+      onReportSyncDiagnostics: (diagnostics) async {
+        sharedDiagnosticsText = diagnostics;
+      },
     );
-
-    await Future.wait([
-      userProvider.loadUser(),
-      planProvider.loadPlanState(),
-      bookmarksProvider.loadBookmarks(),
-    ]);
-
-    await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider<BibleProvider>.value(value: bibleProvider),
-          ChangeNotifierProvider<UserProvider>.value(value: userProvider),
-          ChangeNotifierProvider<ReadingPlanProvider>.value(
-            value: planProvider,
-          ),
-          ChangeNotifierProvider<BookmarksProvider>.value(
-            value: bookmarksProvider,
-          ),
-          ChangeNotifierProvider<AppServicesProvider>.value(
-            value: appServicesProvider,
-          ),
-        ],
-        child: MaterialApp(
-          home: HomeScreen(
-            enableAutoSync: false,
-            onReportSyncDiagnostics: (diagnostics) async {
-              sharedDiagnosticsText = diagnostics;
-            },
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     fakeSyncService.nextError = FirebaseException(
@@ -132,8 +221,8 @@ void main() {
       code: 'permission-denied',
     );
 
-    await appServicesProvider.syncNow(
-      user: userProvider.user,
+    await harness.appServicesProvider.syncNow(
+      user: harness.userProvider.user,
       bookmarks: const <VerseBookmark>[],
       reason: 'manual',
     );
@@ -196,6 +285,219 @@ void main() {
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
-
+    await harness.dispose();
   });
+
+  testWidgets(
+    'auto-sync on resume does not start a second sync while one is in flight',
+    (tester) async {
+      final syncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+      final firstCallGate = syncService.blockNextCall();
+
+      final harness = await _pumpHome(
+        tester,
+        syncService: syncService,
+        connectivity: connectivity,
+        enableAutoSync: true,
+      );
+
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(syncService.callCount, 1);
+      expect(find.text('Status: Syncing'), findsOneWidget);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump(const Duration(milliseconds: 120));
+
+      expect(syncService.callCount, 1);
+
+      firstCallGate.complete();
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(syncService.callCount, 1);
+
+      await harness.dispose();
+    },
+  );
+
+  testWidgets(
+    'rapid bookmark changes are debounced into a single bookmark_change sync',
+    (tester) async {
+      final syncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+      final telemetry = _FakeSyncTelemetry();
+
+      final harness = await _pumpHome(
+        tester,
+        syncService: syncService,
+        connectivity: connectivity,
+        enableAutoSync: true,
+        telemetry: telemetry,
+      );
+
+      await tester.pump(const Duration(milliseconds: 120));
+      final baselineCalls = syncService.callCount;
+
+      await harness.bookmarksProvider.addBookmark(
+        VerseBookmark(
+          book: 'John',
+          chapter: 1,
+          verse: 1,
+          translationId: 'web',
+          createdAt: DateTime(2026, 4, 25, 10),
+        ),
+      );
+      await harness.bookmarksProvider.addBookmark(
+        VerseBookmark(
+          book: 'John',
+          chapter: 1,
+          verse: 2,
+          translationId: 'web',
+          createdAt: DateTime(2026, 4, 25, 10, 0, 1),
+        ),
+      );
+      await harness.bookmarksProvider.addBookmark(
+        VerseBookmark(
+          book: 'John',
+          chapter: 1,
+          verse: 3,
+          translationId: 'web',
+          createdAt: DateTime(2026, 4, 25, 10, 0, 2),
+        ),
+      );
+
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(syncService.callCount, baselineCalls);
+
+      await tester.pump(const Duration(seconds: 3));
+      expect(syncService.callCount, baselineCalls + 1);
+
+      final bookmarkChangeSuccesses = telemetry.events
+          .where(
+            (event) =>
+                event['event'] == 'sync_success' &&
+                event['reason'] == 'bookmark_change',
+          )
+          .length;
+      expect(bookmarkChangeSuccesses, 1);
+
+      await harness.dispose();
+    },
+  );
+
+  testWidgets(
+    'resume while offline queues exactly one pending sync that drains once on reconnect',
+    (tester) async {
+      final syncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+
+      final harness = await _pumpHome(
+        tester,
+        syncService: syncService,
+        connectivity: connectivity,
+        enableAutoSync: true,
+      );
+
+      await tester.pump(const Duration(milliseconds: 150));
+      final baselineCalls = syncService.callCount;
+
+      connectivity.setOffline(true);
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(harness.appServicesProvider.isOffline, isTrue);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump(const Duration(milliseconds: 180));
+
+      expect(harness.appServicesProvider.syncStatus, SyncStatus.pending);
+      expect(syncService.callCount, baselineCalls);
+
+      connectivity.setOffline(false);
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(syncService.callCount, baselineCalls + 1);
+      expect(harness.appServicesProvider.syncStatus, SyncStatus.idle);
+      expect(find.text('Status: Synced'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(syncService.callCount, baselineCalls + 1);
+
+      await harness.dispose();
+    },
+  );
+
+  testWidgets(
+    'manual retry during scheduled retry window triggers one immediate sync without duplicate retry execution',
+    (tester) async {
+      final syncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+      syncService.enqueueError(
+        FirebaseException(plugin: 'cloud_functions', code: 'unavailable'),
+      );
+
+      final harness = await _pumpHome(
+        tester,
+        syncService: syncService,
+        connectivity: connectivity,
+        enableAutoSync: false,
+        baseRetryDelay: const Duration(milliseconds: 500),
+        maxRetryDelay: const Duration(milliseconds: 500),
+      );
+
+      await tester.ensureVisible(find.text('Sync now'));
+      await tester.tap(find.text('Sync now'));
+      await tester.pump(const Duration(milliseconds: 150));
+
+      expect(syncService.callCount, 1);
+      expect(find.textContaining('Status: Retrying'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Sync now'));
+      await tester.tap(find.text('Sync now'));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(syncService.callCount, 2);
+      expect(find.text('Status: Synced'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(syncService.callCount, 2);
+      expect(find.text('Retry now'), findsNothing);
+      expect(find.text('View details'), findsNothing);
+
+      await harness.dispose();
+    },
+  );
+
+  testWidgets(
+    'auto-sync lifecycle transitions keep sync status UI consistent without duplicate controls',
+    (tester) async {
+      final syncService = _FakeCloudSyncService();
+      final connectivity = _FakeConnectivity(false);
+
+      final harness = await _pumpHome(
+        tester,
+        syncService: syncService,
+        connectivity: connectivity,
+        enableAutoSync: true,
+      );
+
+      await tester.pump(const Duration(milliseconds: 150));
+      connectivity.setOffline(true);
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(harness.appServicesProvider.isOffline, isTrue);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump(const Duration(milliseconds: 180));
+
+      expect(harness.appServicesProvider.syncStatus, SyncStatus.pending);
+      expect(find.text('Retry now'), findsNothing);
+      expect(find.text('View details'), findsNothing);
+
+      connectivity.setOffline(false);
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(harness.appServicesProvider.syncStatus, SyncStatus.idle);
+      expect(find.text('Status: Synced'), findsOneWidget);
+      expect(find.text('Retry now'), findsNothing);
+      expect(find.text('View details'), findsNothing);
+
+      await harness.dispose();
+    },
+  );
 }
