@@ -142,6 +142,12 @@ cd functions && npm test
 
 Workflow file: `.github/workflows/flutter.yml`.
 
+## Release Process
+
+Use the release readiness checklist before high-impact merges or release candidates:
+
+- `docs/release-checklist.md`
+
 ## Useful Commands
 
 ```bash
