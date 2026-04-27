@@ -28,11 +28,28 @@ class AuthProvider extends ChangeNotifier {
   bool get isAnonymous => _currentUser?.isAnonymous ?? false;
 
   Future<void> signInWithEmailPassword(String email, String password) async {
-    await _runAuthAction(() => _authService.signInWithEmailPassword(email, password));
+    await _runAuthAction(
+      () => _authService.signInWithEmailPassword(email, password),
+    );
   }
 
   Future<void> signUpWithEmailPassword(String email, String password) async {
-    await _runAuthAction(() => _authService.signUpWithEmailPassword(email, password));
+    await _runAuthAction(() async {
+      if (!isAnonymous) {
+        await _authService.signUpWithEmailPassword(email, password);
+        return;
+      }
+
+      try {
+        await _authService.linkAnonymousWithEmailPassword(email, password);
+      } on FirebaseAuthException catch (error) {
+        if (_isCredentialAlreadyInUse(error.code)) {
+          await _authService.signInWithEmailPassword(email, password);
+          return;
+        }
+        rethrow;
+      }
+    });
   }
 
   Future<void> linkAnonymousWithEmailPassword(
@@ -95,6 +112,12 @@ class AuthProvider extends ChangeNotifier {
       default:
         return 'Authentication failed. Please try again.';
     }
+  }
+
+  bool _isCredentialAlreadyInUse(String code) {
+    return code == 'email-already-in-use' ||
+        code == 'credential-already-in-use' ||
+        code == 'account-exists-with-different-credential';
   }
 
   @override

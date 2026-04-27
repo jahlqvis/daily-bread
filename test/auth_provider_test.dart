@@ -13,6 +13,9 @@ class _FakeAuthService implements AuthService {
   Object? signInError;
   Object? signUpError;
   Object? linkError;
+  int signInCalls = 0;
+  int signUpCalls = 0;
+  int linkCalls = 0;
 
   @override
   AuthUser? get currentUser => _currentUser;
@@ -22,18 +25,32 @@ class _FakeAuthService implements AuthService {
 
   @override
   Future<void> signInWithEmailPassword(String email, String password) async {
+    signInCalls += 1;
     if (signInError != null) {
       throw signInError!;
     }
-    emit(const AuthUser(uid: 'signed-in', email: 'user@example.com', isAnonymous: false));
+    emit(
+      const AuthUser(
+        uid: 'signed-in',
+        email: 'user@example.com',
+        isAnonymous: false,
+      ),
+    );
   }
 
   @override
   Future<void> signUpWithEmailPassword(String email, String password) async {
+    signUpCalls += 1;
     if (signUpError != null) {
       throw signUpError!;
     }
-    emit(const AuthUser(uid: 'new-user', email: 'new@example.com', isAnonymous: false));
+    emit(
+      const AuthUser(
+        uid: 'new-user',
+        email: 'new@example.com',
+        isAnonymous: false,
+      ),
+    );
   }
 
   @override
@@ -41,10 +58,17 @@ class _FakeAuthService implements AuthService {
     String email,
     String password,
   ) async {
+    linkCalls += 1;
     if (linkError != null) {
       throw linkError!;
     }
-    emit(const AuthUser(uid: 'anon-linked', email: 'link@example.com', isAnonymous: false));
+    emit(
+      AuthUser(
+        uid: _currentUser?.uid ?? 'anon-linked',
+        email: email,
+        isAnonymous: false,
+      ),
+    );
   }
 
   @override
@@ -93,9 +117,7 @@ void main() {
 
     test('sets friendly message for sign-in auth failure', () async {
       final service = _FakeAuthService();
-      service.signInError = FirebaseAuthException(
-        code: 'wrong-password',
-      );
+      service.signInError = FirebaseAuthException(code: 'wrong-password');
       final provider = AuthProvider(service);
 
       await provider.signInWithEmailPassword('user@example.com', 'wrong');
@@ -110,9 +132,7 @@ void main() {
 
     test('supports anonymous account linking flow', () async {
       final service = _FakeAuthService();
-      service.emit(
-        const AuthUser(uid: 'anon', email: null, isAnonymous: true),
-      );
+      service.emit(const AuthUser(uid: 'anon', email: null, isAnonymous: true));
       final provider = AuthProvider(service);
       await Future<void>.delayed(Duration.zero);
 
@@ -124,11 +144,58 @@ void main() {
       );
 
       expect(provider.errorMessage, isNull);
-      expect(provider.currentUser?.uid, 'anon-linked');
+      expect(provider.currentUser?.uid, 'anon');
       expect(provider.isAnonymous, isFalse);
 
       provider.dispose();
       await service.dispose();
     });
+
+    test('sign up links anonymous user instead of creating new uid', () async {
+      final service = _FakeAuthService();
+      service.emit(
+        const AuthUser(uid: 'anon-preserved', email: null, isAnonymous: true),
+      );
+      final provider = AuthProvider(service);
+      await Future<void>.delayed(Duration.zero);
+
+      await provider.signUpWithEmailPassword('new@example.com', 'pass1234');
+
+      expect(service.linkCalls, 1);
+      expect(service.signUpCalls, 0);
+      expect(service.signInCalls, 0);
+      expect(provider.errorMessage, isNull);
+      expect(provider.currentUser?.uid, 'anon-preserved');
+      expect(provider.currentUser?.email, 'new@example.com');
+      expect(provider.isAnonymous, isFalse);
+
+      provider.dispose();
+      await service.dispose();
+    });
+
+    test(
+      'sign up falls back to sign in when anonymous link email exists',
+      () async {
+        final service = _FakeAuthService();
+        service.emit(
+          const AuthUser(uid: 'anon', email: null, isAnonymous: true),
+        );
+        service.linkError = FirebaseAuthException(code: 'email-already-in-use');
+        final provider = AuthProvider(service);
+        await Future<void>.delayed(Duration.zero);
+
+        await provider.signUpWithEmailPassword('user@example.com', 'pass1234');
+
+        expect(service.linkCalls, 1);
+        expect(service.signInCalls, 1);
+        expect(service.signUpCalls, 0);
+        expect(provider.errorMessage, isNull);
+        expect(provider.currentUser?.uid, 'signed-in');
+        expect(provider.isAnonymous, isFalse);
+
+        provider.dispose();
+        await service.dispose();
+      },
+    );
   });
 }

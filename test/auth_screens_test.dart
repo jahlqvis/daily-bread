@@ -19,6 +19,7 @@ class _FakeAuthService implements AuthService {
   Object? resetError;
   int signInCalls = 0;
   int signUpCalls = 0;
+  int linkCalls = 0;
   int resetCalls = 0;
 
   @override
@@ -33,7 +34,13 @@ class _FakeAuthService implements AuthService {
     if (signInError != null) {
       throw signInError!;
     }
-    _emit(const AuthUser(uid: 'uid-sign-in', email: 'user@example.com', isAnonymous: false));
+    _emit(
+      const AuthUser(
+        uid: 'uid-sign-in',
+        email: 'user@example.com',
+        isAnonymous: false,
+      ),
+    );
   }
 
   @override
@@ -42,14 +49,29 @@ class _FakeAuthService implements AuthService {
     if (signUpError != null) {
       throw signUpError!;
     }
-    _emit(const AuthUser(uid: 'uid-sign-up', email: 'new@example.com', isAnonymous: false));
+    _emit(
+      const AuthUser(
+        uid: 'uid-sign-up',
+        email: 'new@example.com',
+        isAnonymous: false,
+      ),
+    );
   }
 
   @override
   Future<void> linkAnonymousWithEmailPassword(
     String email,
     String password,
-  ) async {}
+  ) async {
+    linkCalls += 1;
+    _emit(
+      AuthUser(
+        uid: _currentUser?.uid ?? 'anon',
+        email: email,
+        isAnonymous: false,
+      ),
+    );
+  }
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {
@@ -111,7 +133,10 @@ void main() {
       await tester.pump();
 
       expect(find.text('Enter a valid email address.'), findsOneWidget);
-      expect(find.text('Password must be at least 8 characters.'), findsOneWidget);
+      expect(
+        find.text('Password must be at least 8 characters.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('create account validates minimum password and confirmation', (
@@ -139,7 +164,10 @@ void main() {
       await tester.tap(find.widgetWithText(ElevatedButton, 'Create account'));
       await tester.pump();
 
-      expect(find.text('Password must be at least 8 characters.'), findsOneWidget);
+      expect(
+        find.text('Password must be at least 8 characters.'),
+        findsOneWidget,
+      );
       expect(find.text('Passwords do not match.'), findsOneWidget);
     });
 
@@ -237,6 +265,65 @@ void main() {
       expect(find.byType(CreateAccountScreen), findsNothing);
     });
 
+    testWidgets('create account links current anonymous user on success', (
+      tester,
+    ) async {
+      final service = _FakeAuthService();
+      addTearDown(service.dispose);
+      service._emit(
+        const AuthUser(uid: 'anonymous-uid', email: null, isAnonymous: true),
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          service: service,
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CreateAccountScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text('Open create account'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open create account'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Email'),
+        'new@example.com',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Password'),
+        'password123',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Confirm password'),
+        'password123',
+      );
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Create account'));
+      await tester.pumpAndSettle();
+
+      expect(service.linkCalls, 1);
+      expect(service.signUpCalls, 0);
+      expect(service.currentUser?.uid, 'anonymous-uid');
+      expect(service.currentUser?.isAnonymous, isFalse);
+      expect(find.byType(CreateAccountScreen), findsNothing);
+    });
+
     testWidgets('forgot password sends reset and shows confirmation', (
       tester,
     ) async {
@@ -253,10 +340,7 @@ void main() {
         of: find.byType(AlertDialog),
         matching: find.widgetWithText(TextFormField, 'Email'),
       );
-      await tester.enterText(
-        dialogEmailField,
-        'user@example.com',
-      );
+      await tester.enterText(dialogEmailField, 'user@example.com');
       await tester.tap(find.text('Send reset link'));
       await tester.pumpAndSettle();
 
