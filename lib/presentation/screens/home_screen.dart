@@ -10,6 +10,7 @@ import '../providers/bible_provider.dart';
 import '../providers/reading_plan_provider.dart';
 import '../providers/bookmarks_provider.dart';
 import '../providers/app_services_provider.dart';
+import '../providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/bible_translation.dart';
 import '../widgets/translation_selector.dart';
@@ -136,6 +137,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     required String reason,
   }) async {
     if (!mounted || _isSyncInFlight) {
+      return;
+    }
+
+    final authProvider = context.read<AuthProvider>();
+    if (!_hasAccountLinkedSync(authProvider)) {
+      if (showFeedback && mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SignInScreen()),
+        );
+      }
       return;
     }
 
@@ -487,13 +499,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildSyncAndReminderCard(BuildContext context) {
-    return Consumer<AppServicesProvider>(
-      builder: (context, servicesProvider, _) {
+    return Consumer2<AppServicesProvider, AuthProvider>(
+      builder: (context, servicesProvider, authProvider, _) {
         final syncedAt = servicesProvider.lastSyncedAt;
         final syncedLabel = syncedAt == null
             ? 'Not synced yet'
             : 'Last synced ${DateFormat('MMM d, HH:mm').format(syncedAt)}';
         final backendLabel = servicesProvider.cloudBackendLabel;
+        final hasAccountLinkedSync = _hasAccountLinkedSync(authProvider);
 
         return Card(
           child: Padding(
@@ -539,6 +552,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (!hasAccountLinkedSync) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Sign in to back up and sync across devices.',
+                    style: TextStyle(
+                      color: Colors.grey[800],
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
@@ -555,9 +579,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.cloud_upload_outlined),
+                        : Icon(
+                            hasAccountLinkedSync
+                                ? Icons.cloud_upload_outlined
+                                : Icons.lock_outline,
+                          ),
                     label: Text(
-                      servicesProvider.isSyncing ? 'Syncing...' : 'Sync now',
+                      servicesProvider.isSyncing
+                          ? 'Syncing...'
+                          : hasAccountLinkedSync
+                          ? 'Sync now'
+                          : 'Sign in to sync',
                     ),
                   ),
                 ),
@@ -1038,6 +1070,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  bool _hasAccountLinkedSync(AuthProvider authProvider) {
+    return authProvider.isAuthenticated && !authProvider.isAnonymous;
+  }
+
   String _syncErrorSummary(AppServicesProvider servicesProvider) {
     final category = servicesProvider.lastSyncErrorCategory;
     final code = servicesProvider.lastSyncErrorCode;
@@ -1075,7 +1111,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 Text(
                   'Category: ${_syncCategoryLabel(servicesProvider.lastSyncErrorCategory)}',
                 ),
-                Text('Code: ${servicesProvider.lastSyncErrorCode ?? 'unknown'}'),
+                Text(
+                  'Code: ${servicesProvider.lastSyncErrorCode ?? 'unknown'}',
+                ),
                 Text('Successes: ${servicesProvider.syncSuccessCount}'),
                 Text('Failures: ${servicesProvider.syncFailureCount}'),
                 Text(
@@ -1101,9 +1139,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             TextButton(
               onPressed: () async {
                 final diagnostics = _syncDiagnosticsText(servicesProvider);
-                await Clipboard.setData(
-                  ClipboardData(text: diagnostics),
-                );
+                await Clipboard.setData(ClipboardData(text: diagnostics));
                 if (!parentContext.mounted) {
                   return;
                 }
@@ -1241,8 +1277,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (outcome == null || at == null) {
       return 'N/A';
     }
-    final outcomeLabel =
-        outcome == SyncOutcome.success ? 'Success' : 'Failure';
+    final outcomeLabel = outcome == SyncOutcome.success ? 'Success' : 'Failure';
     return '$outcomeLabel at ${DateFormat('MMM d, HH:mm:ss').format(at)}';
   }
 

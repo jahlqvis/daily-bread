@@ -5,11 +5,14 @@ import 'package:daily_bread/data/datasources/local_data_source.dart';
 import 'package:daily_bread/data/models/verse_bookmark_model.dart';
 import 'package:daily_bread/data/repositories/user_repository.dart';
 import 'package:daily_bread/presentation/providers/app_services_provider.dart';
+import 'package:daily_bread/presentation/providers/auth_provider.dart';
 import 'package:daily_bread/presentation/providers/bible_provider.dart';
 import 'package:daily_bread/presentation/providers/bookmarks_provider.dart';
 import 'package:daily_bread/presentation/providers/reading_plan_provider.dart';
 import 'package:daily_bread/presentation/providers/user_provider.dart';
 import 'package:daily_bread/presentation/screens/home_screen.dart';
+import 'package:daily_bread/presentation/screens/sign_in_screen.dart';
+import 'package:daily_bread/services/auth/auth_service.dart';
 import 'package:daily_bread/services/cloud/cloud_sync_service.dart';
 import 'package:daily_bread/services/notifications/daily_reminder_service.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -96,6 +99,61 @@ class _FakeSyncTelemetry implements SyncTelemetry {
   }
 }
 
+class _FakeAuthService implements AuthService {
+  final StreamController<AuthUser?> _controller =
+      StreamController<AuthUser?>.broadcast();
+  AuthUser? _currentUser;
+
+  _FakeAuthService(this._currentUser);
+
+  @override
+  Stream<AuthUser?> authStateChanges() => _controller.stream;
+
+  @override
+  AuthUser? get currentUser => _currentUser;
+
+  @override
+  Future<void> signInWithEmailPassword(String email, String password) async {
+    _emit(AuthUser(uid: 'signed-in', email: email, isAnonymous: false));
+  }
+
+  @override
+  Future<void> signUpWithEmailPassword(String email, String password) async {
+    _emit(AuthUser(uid: 'signed-up', email: email, isAnonymous: false));
+  }
+
+  @override
+  Future<void> linkAnonymousWithEmailPassword(
+    String email,
+    String password,
+  ) async {
+    _emit(
+      AuthUser(
+        uid: _currentUser?.uid ?? 'linked',
+        email: email,
+        isAnonymous: false,
+      ),
+    );
+  }
+
+  @override
+  Future<void> sendPasswordResetEmail(String email) async {}
+
+  @override
+  Future<void> signOut() async {
+    _emit(null);
+  }
+
+  void _emit(AuthUser? user) {
+    _currentUser = user;
+    _controller.add(user);
+  }
+
+  Future<void> dispose() async {
+    await _controller.close();
+  }
+}
+
 class _HomeTestHarness {
   final LocalDataSource localDataSource;
   final _FakeCloudSyncService syncService;
@@ -104,6 +162,8 @@ class _HomeTestHarness {
   final ReadingPlanProvider planProvider;
   final BookmarksProvider bookmarksProvider;
   final AppServicesProvider appServicesProvider;
+  final _FakeAuthService authService;
+  final AuthProvider authProvider;
 
   _HomeTestHarness({
     required this.localDataSource,
@@ -113,9 +173,13 @@ class _HomeTestHarness {
     required this.planProvider,
     required this.bookmarksProvider,
     required this.appServicesProvider,
+    required this.authService,
+    required this.authProvider,
   });
 
   Future<void> dispose() async {
+    authProvider.dispose();
+    await authService.dispose();
     appServicesProvider.dispose();
     await connectivity.dispose();
   }
@@ -130,6 +194,11 @@ Future<_HomeTestHarness> _pumpHome(
   Duration? baseRetryDelay,
   Duration? maxRetryDelay,
   SyncTelemetry? telemetry,
+  AuthUser? authUser = const AuthUser(
+    uid: 'auth-user',
+    email: 'user@example.com',
+    isAnonymous: false,
+  ),
 }) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -147,6 +216,8 @@ Future<_HomeTestHarness> _pumpHome(
     baseRetryDelay: baseRetryDelay ?? const Duration(seconds: 2),
     maxRetryDelay: maxRetryDelay ?? const Duration(minutes: 5),
   );
+  final authService = _FakeAuthService(authUser);
+  final authProvider = AuthProvider(authService);
 
   await Future.wait([
     userProvider.loadUser(),
@@ -162,10 +233,13 @@ Future<_HomeTestHarness> _pumpHome(
         ),
         ChangeNotifierProvider<UserProvider>.value(value: userProvider),
         ChangeNotifierProvider<ReadingPlanProvider>.value(value: planProvider),
-        ChangeNotifierProvider<BookmarksProvider>.value(value: bookmarksProvider),
+        ChangeNotifierProvider<BookmarksProvider>.value(
+          value: bookmarksProvider,
+        ),
         ChangeNotifierProvider<AppServicesProvider>.value(
           value: appServicesProvider,
         ),
+        ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
       ],
       child: MaterialApp(
         home: HomeScreen(
@@ -185,6 +259,8 @@ Future<_HomeTestHarness> _pumpHome(
     planProvider: planProvider,
     bookmarksProvider: bookmarksProvider,
     appServicesProvider: appServicesProvider,
+    authService: authService,
+    authProvider: authProvider,
   );
 }
 
@@ -285,6 +361,40 @@ void main() {
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
+    await harness.dispose();
+  });
+
+  testWidgets('signed-out Sync now opens sign-in flow instead of syncing', (
+    tester,
+  ) async {
+    final syncService = _FakeCloudSyncService();
+    final connectivity = _FakeConnectivity(false);
+    final harness = await _pumpHome(
+      tester,
+      syncService: syncService,
+      connectivity: connectivity,
+      enableAutoSync: false,
+      authUser: null,
+    );
+
+    expect(
+      find.text('Sign in to back up and sync across devices.'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(ElevatedButton, 'Sign in to sync'),
+      findsOneWidget,
+    );
+
+    await tester.ensureVisible(
+      find.widgetWithText(ElevatedButton, 'Sign in to sync'),
+    );
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Sign in to sync'));
+    await tester.pumpAndSettle();
+
+    expect(syncService.callCount, 0);
+    expect(find.byType(SignInScreen), findsOneWidget);
+
     await harness.dispose();
   });
 
