@@ -4,6 +4,7 @@ const int syncDiagnosticsVersion = 1;
 
 String buildSyncDiagnosticsText({
   required String backend,
+  required String authState,
   required String status,
   required String health,
   required bool isOffline,
@@ -21,14 +22,14 @@ String buildSyncDiagnosticsText({
   required String error,
 }) {
   final formatter = DateFormat('MMM d, HH:mm:ss');
-  final outcomeLine =
-      lastOutcome == null || lastOutcomeAt == null
+  final outcomeLine = lastOutcome == null || lastOutcomeAt == null
       ? 'N/A'
       : '$lastOutcome at ${formatter.format(lastOutcomeAt)}';
 
   return [
     'Diagnostics Version: $syncDiagnosticsVersion',
     'Backend: $backend',
+    'Auth State: $authState',
     'Status: $status',
     'Health: $health',
     'Offline: $isOffline',
@@ -66,7 +67,10 @@ String redactSyncDiagnosticsText(String input) {
   );
 
   redacted = redacted.replaceAllMapped(
-    RegExp(r'((?:api[_-]?key|token|secret|password)=)([^&\s]+)', caseSensitive: false),
+    RegExp(
+      r'((?:api[_-]?key|token|secret|password)=)([^&\s]+)',
+      caseSensitive: false,
+    ),
     (match) => '${match.group(1)}${_maskSecret(match.group(2)!)}',
   );
 

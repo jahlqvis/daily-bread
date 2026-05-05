@@ -89,6 +89,15 @@ class _FakeAuthService implements AuthService {
   }
 }
 
+class _FakeAuthTelemetry implements AuthTelemetry {
+  final List<Map<String, Object?>> events = [];
+
+  @override
+  void record(String event, Map<String, Object?> metadata) {
+    events.add({'event': event, ...metadata});
+  }
+}
+
 void main() {
   group('AuthProvider', () {
     test('reflects auth state updates from service', () async {
@@ -125,6 +134,30 @@ void main() {
       expect(provider.isLoading, isFalse);
       expect(provider.errorMessage, 'Invalid email or password.');
       expect(provider.isAuthenticated, isFalse);
+
+      provider.dispose();
+      await service.dispose();
+    });
+
+    test('records auth telemetry for sign-in success and failure', () async {
+      final telemetry = _FakeAuthTelemetry();
+      final service = _FakeAuthService();
+      final provider = AuthProvider(service, authTelemetry: telemetry);
+
+      await provider.signInWithEmailPassword('user@example.com', 'pass1234');
+
+      expect(
+        telemetry.events.any((e) => e['event'] == 'auth_sign_in_success'),
+        isTrue,
+      );
+
+      service.signInError = FirebaseAuthException(code: 'wrong-password');
+      await provider.signInWithEmailPassword('user@example.com', 'wrong');
+
+      final failureEvent = telemetry.events.lastWhere(
+        (e) => e['event'] == 'auth_sign_in_failure',
+      );
+      expect(failureEvent['errorCode'], 'wrong-password');
 
       provider.dispose();
       await service.dispose();
@@ -176,12 +209,13 @@ void main() {
     test(
       'sign up falls back to sign in when anonymous link email exists',
       () async {
+        final telemetry = _FakeAuthTelemetry();
         final service = _FakeAuthService();
         service.emit(
           const AuthUser(uid: 'anon', email: null, isAnonymous: true),
         );
         service.linkError = FirebaseAuthException(code: 'email-already-in-use');
-        final provider = AuthProvider(service);
+        final provider = AuthProvider(service, authTelemetry: telemetry);
         await Future<void>.delayed(Duration.zero);
 
         await provider.signUpWithEmailPassword('user@example.com', 'pass1234');
@@ -192,6 +226,43 @@ void main() {
         expect(provider.errorMessage, isNull);
         expect(provider.currentUser?.uid, 'signed-in');
         expect(provider.isAnonymous, isFalse);
+        expect(
+          telemetry.events.any((e) => e['event'] == 'auth_link_failure'),
+          isTrue,
+        );
+        expect(
+          telemetry.events.any((e) => e['event'] == 'auth_sign_in_success'),
+          isTrue,
+        );
+
+        provider.dispose();
+        await service.dispose();
+      },
+    );
+
+    test(
+      'diagnostics auth state categorizes signed-out/anonymous/authenticated',
+      () async {
+        final service = _FakeAuthService();
+        final provider = AuthProvider(service);
+
+        expect(provider.diagnosticsAuthState, 'signed_out');
+
+        service.emit(
+          const AuthUser(uid: 'anon', email: null, isAnonymous: true),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(provider.diagnosticsAuthState, 'anonymous');
+
+        service.emit(
+          const AuthUser(
+            uid: 'uid',
+            email: 'user@example.com',
+            isAnonymous: false,
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(provider.diagnosticsAuthState, 'authenticated');
 
         provider.dispose();
         await service.dispose();

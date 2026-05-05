@@ -6,6 +6,7 @@ void main() {
     test('includes diagnostics version as first line', () {
       final diagnostics = buildSyncDiagnosticsText(
         backend: 'Firebase',
+        authState: 'authenticated',
         status: 'failed',
         health: 'Critical',
         isOffline: false,
@@ -25,12 +26,14 @@ void main() {
 
       expect(diagnostics.startsWith('Diagnostics Version: 1\n'), isTrue);
       expect(diagnostics, contains('Backend: Firebase'));
+      expect(diagnostics, contains('Auth State: authenticated'));
       expect(diagnostics, contains('Status: failed'));
     });
 
     test('formats reset-state diagnostics cleanly', () {
       final diagnostics = buildSyncDiagnosticsText(
         backend: 'Firebase',
+        authState: 'signed_out',
         status: 'idle',
         health: 'Unknown',
         isOffline: false,
@@ -49,6 +52,7 @@ void main() {
       );
 
       expect(diagnostics, contains('Diagnostics Version: 1'));
+      expect(diagnostics, contains('Auth State: signed_out'));
       expect(diagnostics, contains('Status: idle'));
       expect(diagnostics, contains('Health: Unknown'));
       expect(diagnostics, contains('Last attempt: N/A'));
@@ -56,6 +60,7 @@ void main() {
       expect(diagnostics, contains('Last outcome: N/A'));
       expect(diagnostics, contains('Next retry: N/A'));
       expect(diagnostics, contains('Error: N/A'));
+      expect(diagnostics, isNot(contains('@example.com')));
     });
   });
 

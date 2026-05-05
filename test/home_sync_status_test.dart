@@ -337,6 +337,8 @@ void main() {
     expect(clipboardText, contains('Health: Critical'));
     expect(clipboardText, contains('Failures: 1'));
     expect(clipboardText, contains('Category: Permission'));
+    expect(clipboardText, contains('Auth State: authenticated'));
+    expect(clipboardText, isNot(contains('user@example.com')));
 
     await tester.tap(find.text('Report issue'));
     await tester.pump();
@@ -344,6 +346,8 @@ void main() {
     expect(sharedDiagnosticsText, contains('Health: Critical'));
     expect(sharedDiagnosticsText, contains('Failures: 1'));
     expect(sharedDiagnosticsText, contains('Category: Permission'));
+    expect(sharedDiagnosticsText, contains('Auth State: authenticated'));
+    expect(sharedDiagnosticsText, isNot(contains('user@example.com')));
 
     await tester.tap(find.text('Reset diagnostics'));
     await tester.pump();

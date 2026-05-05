@@ -1296,8 +1296,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   String _syncDiagnosticsText(AppServicesProvider servicesProvider) {
+    final authProvider = context.read<AuthProvider>();
     final diagnostics = buildSyncDiagnosticsText(
       backend: servicesProvider.cloudBackendLabel,
+      authState: _diagnosticsAuthState(authProvider),
       status: servicesProvider.syncStatus.name,
       health: servicesProvider.syncHealthLabel,
       isOffline: servicesProvider.isOffline,
@@ -1315,6 +1317,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       error: servicesProvider.lastSyncErrorMessage ?? 'N/A',
     );
     return redactSyncDiagnosticsText(diagnostics);
+  }
+
+  String _diagnosticsAuthState(AuthProvider authProvider) {
+    if (!authProvider.isAuthenticated) {
+      return 'signed_out';
+    }
+    if (authProvider.isAnonymous) {
+      return 'anonymous';
+    }
+    return 'authenticated';
   }
 
   Color _syncStatusColor(AppServicesProvider servicesProvider) {
