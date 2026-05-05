@@ -10,6 +10,7 @@ import 'package:daily_bread/presentation/providers/bible_provider.dart';
 import 'package:daily_bread/presentation/providers/bookmarks_provider.dart';
 import 'package:daily_bread/presentation/providers/reading_plan_provider.dart';
 import 'package:daily_bread/presentation/providers/user_provider.dart';
+import 'package:daily_bread/presentation/screens/create_account_screen.dart';
 import 'package:daily_bread/presentation/screens/home_screen.dart';
 import 'package:daily_bread/presentation/screens/sign_in_screen.dart';
 import 'package:daily_bread/services/auth/auth_service.dart';
@@ -394,6 +395,117 @@ void main() {
 
     expect(syncService.callCount, 0);
     expect(find.byType(SignInScreen), findsOneWidget);
+
+    await harness.dispose();
+  });
+
+  testWidgets('signed-out card shows create account and sign in actions', (
+    tester,
+  ) async {
+    final harness = await _pumpHome(
+      tester,
+      syncService: _FakeCloudSyncService(),
+      connectivity: _FakeConnectivity(false),
+      enableAutoSync: false,
+      authUser: null,
+    );
+
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.text('Not signed in'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
+
+    await harness.dispose();
+  });
+
+  testWidgets('authenticated card shows signed-in email and sign out action', (
+    tester,
+  ) async {
+    const authUser = AuthUser(
+      uid: 'auth-user',
+      email: 'disciple@example.com',
+      isAnonymous: false,
+    );
+    final harness = await _pumpHome(
+      tester,
+      syncService: _FakeCloudSyncService(),
+      connectivity: _FakeConnectivity(false),
+      enableAutoSync: false,
+      authUser: authUser,
+    );
+
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.text('Signed in as disciple@example.com'), findsOneWidget);
+    expect(find.text('Cloud sync is active for this account.'), findsOneWidget);
+    expect(find.text('Sign out'), findsOneWidget);
+
+    await harness.dispose();
+  });
+
+  testWidgets('tapping create account opens create account screen', (
+    tester,
+  ) async {
+    final harness = await _pumpHome(
+      tester,
+      syncService: _FakeCloudSyncService(),
+      connectivity: _FakeConnectivity(false),
+      enableAutoSync: false,
+      authUser: null,
+    );
+
+    await tester.ensureVisible(
+      find.widgetWithText(OutlinedButton, 'Create account'),
+    );
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Create account'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CreateAccountScreen), findsOneWidget);
+
+    await harness.dispose();
+  });
+
+  testWidgets('tapping sign in opens sign in screen', (tester) async {
+    final harness = await _pumpHome(
+      tester,
+      syncService: _FakeCloudSyncService(),
+      connectivity: _FakeConnectivity(false),
+      enableAutoSync: false,
+      authUser: null,
+    );
+
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SignInScreen), findsOneWidget);
+
+    await harness.dispose();
+  });
+
+  testWidgets('tapping sign out returns card to signed-out state', (
+    tester,
+  ) async {
+    const authUser = AuthUser(
+      uid: 'auth-user',
+      email: 'disciple@example.com',
+      isAnonymous: false,
+    );
+    final harness = await _pumpHome(
+      tester,
+      syncService: _FakeCloudSyncService(),
+      connectivity: _FakeConnectivity(false),
+      enableAutoSync: false,
+      authUser: authUser,
+    );
+
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Sign out'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Sign out'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Signed out. Cloud sync disabled.'), findsOneWidget);
+    expect(find.text('Not signed in'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
 
     await harness.dispose();
   });

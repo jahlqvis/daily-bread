@@ -22,6 +22,7 @@ import 'book_selection_screen.dart';
 import 'verse_search_screen.dart';
 import 'reading_plans_screen.dart';
 import 'bookmarks_screen.dart';
+import 'create_account_screen.dart';
 import 'sign_in_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -507,6 +508,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : 'Last synced ${DateFormat('MMM d, HH:mm').format(syncedAt)}';
         final backendLabel = servicesProvider.cloudBackendLabel;
         final hasAccountLinkedSync = _hasAccountLinkedSync(authProvider);
+        final accountEmail = authProvider.currentUser?.email;
 
         return Card(
           child: Padding(
@@ -552,17 +554,67 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (!hasAccountLinkedSync) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Sign in to back up and sync across devices.',
-                    style: TextStyle(
-                      color: Colors.grey[800],
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 8),
+                const Text(
+                  'Account',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  hasAccountLinkedSync
+                      ? accountEmail == null || accountEmail.isEmpty
+                            ? 'Signed in'
+                            : 'Signed in as $accountEmail'
+                      : 'Not signed in',
+                  style: TextStyle(
+                    color: Colors.grey[800],
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
-                ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasAccountLinkedSync
+                      ? 'Cloud sync is active for this account.'
+                      : 'Sign in to back up and sync across devices.',
+                  style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                if (hasAccountLinkedSync)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: authProvider.isLoading
+                          ? null
+                          : () => _signOutAccount(context),
+                      icon: const Icon(Icons.logout),
+                      label: const Text('Sign out'),
+                    ),
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: authProvider.isLoading
+                              ? null
+                              : () => _openCreateAccount(context),
+                          child: const Text('Create account'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: authProvider.isLoading
+                              ? null
+                              : () => _openSignIn(context),
+                          child: const Text('Sign in'),
+                        ),
+                      ),
+                    ],
+                  ),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
@@ -1072,6 +1124,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   bool _hasAccountLinkedSync(AuthProvider authProvider) {
     return authProvider.isAuthenticated && !authProvider.isAnonymous;
+  }
+
+  Future<void> _openSignIn(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SignInScreen()),
+    );
+  }
+
+  Future<void> _openCreateAccount(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CreateAccountScreen()),
+    );
+  }
+
+  Future<void> _signOutAccount(BuildContext context) async {
+    final authProvider = context.read<AuthProvider>();
+    await authProvider.signOut();
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Signed out. Cloud sync disabled.'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   String _syncErrorSummary(AppServicesProvider servicesProvider) {
