@@ -16,6 +16,7 @@ class _FakeAuthService implements AuthService {
   int signInCalls = 0;
   int signUpCalls = 0;
   int linkCalls = 0;
+  bool emitOnActions = true;
 
   @override
   AuthUser? get currentUser => _currentUser;
@@ -29,13 +30,16 @@ class _FakeAuthService implements AuthService {
     if (signInError != null) {
       throw signInError!;
     }
-    emit(
-      const AuthUser(
-        uid: 'signed-in',
-        email: 'user@example.com',
-        isAnonymous: false,
-      ),
+    final user = const AuthUser(
+      uid: 'signed-in',
+      email: 'user@example.com',
+      isAnonymous: false,
     );
+    if (emitOnActions) {
+      emit(user);
+      return;
+    }
+    _currentUser = user;
   }
 
   @override
@@ -44,13 +48,16 @@ class _FakeAuthService implements AuthService {
     if (signUpError != null) {
       throw signUpError!;
     }
-    emit(
-      const AuthUser(
-        uid: 'new-user',
-        email: 'new@example.com',
-        isAnonymous: false,
-      ),
+    final user = const AuthUser(
+      uid: 'new-user',
+      email: 'new@example.com',
+      isAnonymous: false,
     );
+    if (emitOnActions) {
+      emit(user);
+      return;
+    }
+    _currentUser = user;
   }
 
   @override
@@ -62,13 +69,16 @@ class _FakeAuthService implements AuthService {
     if (linkError != null) {
       throw linkError!;
     }
-    emit(
-      AuthUser(
-        uid: _currentUser?.uid ?? 'anon-linked',
-        email: email,
-        isAnonymous: false,
-      ),
+    final user = AuthUser(
+      uid: _currentUser?.uid ?? 'anon-linked',
+      email: email,
+      isAnonymous: false,
     );
+    if (emitOnActions) {
+      emit(user);
+      return;
+    }
+    _currentUser = user;
   }
 
   @override
@@ -162,6 +172,26 @@ void main() {
       provider.dispose();
       await service.dispose();
     });
+
+    test(
+      'refreshes current user after successful auth action without stream emission',
+      () async {
+        final service = _FakeAuthService();
+        service.emitOnActions = false;
+        final provider = AuthProvider(service);
+
+        expect(provider.isAuthenticated, isFalse);
+
+        await provider.signInWithEmailPassword('user@example.com', 'pass1234');
+
+        expect(provider.errorMessage, isNull);
+        expect(provider.isAuthenticated, isTrue);
+        expect(provider.currentUser?.uid, 'signed-in');
+
+        provider.dispose();
+        await service.dispose();
+      },
+    );
 
     test('supports anonymous account linking flow', () async {
       final service = _FakeAuthService();

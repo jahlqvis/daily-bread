@@ -8,11 +8,12 @@ class FirebaseAuthService implements AuthService {
   FirebaseAuthService({FirebaseAuth? firebaseAuth})
     : _injectedFirebaseAuth = firebaseAuth;
 
-  FirebaseAuth get _firebaseAuth => _injectedFirebaseAuth ?? FirebaseAuth.instance;
+  FirebaseAuth get _firebaseAuth =>
+      _injectedFirebaseAuth ?? FirebaseAuth.instance;
 
   @override
   Stream<AuthUser?> authStateChanges() {
-    return _firebaseAuth.authStateChanges().map(_toAuthUser);
+    return _firebaseAuth.userChanges().map(_toAuthUser);
   }
 
   @override
@@ -69,6 +70,10 @@ class FirebaseAuthService implements AuthService {
       return null;
     }
 
-    return AuthUser(uid: user.uid, email: user.email, isAnonymous: user.isAnonymous);
+    return AuthUser(
+      uid: user.uid,
+      email: user.email,
+      isAnonymous: user.isAnonymous,
+    );
   }
 }

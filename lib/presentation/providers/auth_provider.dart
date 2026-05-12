@@ -143,6 +143,7 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       await action();
+      _currentUser = _authService.currentUser;
       if (successEvent != null) {
         _recordTelemetry(successEvent, metadata);
       }
