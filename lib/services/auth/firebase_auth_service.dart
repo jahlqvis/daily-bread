@@ -3,10 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'auth_service.dart';
 
 class FirebaseAuthService implements AuthService {
-  final FirebaseAuth _firebaseAuth;
+  final FirebaseAuth? _injectedFirebaseAuth;
 
   FirebaseAuthService({FirebaseAuth? firebaseAuth})
-    : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance;
+    : _injectedFirebaseAuth = firebaseAuth;
+
+  FirebaseAuth get _firebaseAuth => _injectedFirebaseAuth ?? FirebaseAuth.instance;
 
   @override
   Stream<AuthUser?> authStateChanges() {
