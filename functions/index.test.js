@@ -1,8 +1,34 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
+const { Timestamp } = require("firebase-admin/firestore");
 const { HttpsError } = require("firebase-functions/v2/https");
-const { _internals } = require("./index");
+const { syncUserState, _internals } = require("./index");
+
+test("sync callable retains its region and requires authentication", async () => {
+  assert.deepEqual(syncUserState.__endpoint.callableTrigger, {});
+  assert.deepEqual(syncUserState.__endpoint.region, ["us-central1"]);
+  await assert.rejects(
+    syncUserState.run({ data: {} }),
+    (error) => error instanceof HttpsError && error.code === "unauthenticated",
+  );
+});
+
+test("sync parses modular Firestore timestamps in bookmarks and tombstones", () => {
+  const created = new Date("2026-04-22T10:00:00.000Z");
+  const updated = new Date("2026-04-22T11:00:00.000Z");
+  const parsed = _internals.parseSnapshot({
+    bookmarks: [{
+      translationId: "web", book: "John", chapter: 3, verse: 16,
+      createdAt: Timestamp.fromDate(created), updatedAt: Timestamp.fromDate(updated),
+    }],
+    tombstones: { "web|John|3|17": Timestamp.fromDate(updated) },
+  });
+  _internals.validateSnapshot(parsed);
+  assert.deepEqual(parsed.bookmarks[0].createdAt, created);
+  assert.deepEqual(parsed.bookmarks[0].updatedAt, updated);
+  assert.deepEqual(parsed.tombstones["web|John|3|17"], updated);
+});
 
 test("mergeSnapshots keeps newer tombstone over stale edit", () => {
   const bookmarkId = "web|John|3|16";
