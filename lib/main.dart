@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/theme/app_theme.dart';
 import 'data/datasources/local_data_source.dart';
 import 'data/datasources/bible_data_source.dart';
+import 'data/datasources/translation_preferences.dart';
 import 'data/repositories/user_repository.dart';
 import 'presentation/providers/user_provider.dart';
 import 'presentation/providers/bible_provider.dart';
@@ -13,6 +14,7 @@ import 'presentation/providers/bookmarks_provider.dart';
 import 'presentation/providers/app_services_provider.dart';
 import 'presentation/providers/auth_provider.dart';
 import 'presentation/screens/home_screen.dart';
+import 'presentation/screens/translation_choice_screen.dart';
 import 'services/auth/firebase_auth_service.dart';
 import 'services/cloud/cloud_sync_service.dart';
 import 'services/cloud/firebase_backend_config.dart';
@@ -47,7 +49,14 @@ void main() async {
           create: (_) => UserProvider(userRepository)..loadUser(),
         ),
         ChangeNotifierProvider(
-          create: (_) => BibleProvider(bibleDataSource)..loadBible(),
+          create: (_) {
+            final provider = BibleProvider(
+              bibleDataSource,
+              translationPreferences: TranslationPreferences(prefs),
+            );
+            if (provider.hasChosenTranslation) provider.loadBible();
+            return provider;
+          },
         ),
         ChangeNotifierProvider(
           create: (_) => ReadingPlanProvider(localDataSource)..loadPlanState(),
@@ -55,14 +64,15 @@ void main() async {
         ChangeNotifierProvider(
           create: (_) => BookmarksProvider(localDataSource)..loadBookmarks(),
         ),
-        ChangeNotifierProvider(create: (_) => AuthProvider(authService)),
         ChangeNotifierProvider(
-          create: (_) =>
-              AppServicesProvider(
-                cloudSyncService,
-                dailyReminderService,
-                localDataSource: localDataSource,
-              ),
+          create: (_) => AuthProvider(authService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AppServicesProvider(
+            cloudSyncService,
+            dailyReminderService,
+            localDataSource: localDataSource,
+          ),
         ),
       ],
       child: const DailyBreadApp(),
@@ -79,7 +89,7 @@ class DailyBreadApp extends StatelessWidget {
       title: 'DailyBread',
       theme: AppTheme.lightTheme,
       debugShowCheckedModeBanner: false,
-      home: const HomeScreen(),
+      home: const TranslationChoiceGate(child: HomeScreen()),
     );
   }
 }

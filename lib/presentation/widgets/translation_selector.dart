@@ -15,8 +15,15 @@ class TranslationSelector extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: PopupMenuButton<BibleTranslation>(
             tooltip: 'Select translation',
-            onSelected: (translation) {
-              bibleProvider.selectTranslation(translation);
+            onSelected: (translation) async {
+              await bibleProvider.selectTranslation(translation);
+              if (!context.mounted) return;
+              final error = bibleProvider.translationSaveError;
+              if (error != null) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(error)));
+              }
             },
             position: PopupMenuPosition.under,
             itemBuilder: (context) {
@@ -56,7 +63,11 @@ class TranslationSelector extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 18),
+                  const Icon(
+                    Icons.keyboard_arrow_down,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ],
               ),
             ),

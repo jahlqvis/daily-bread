@@ -10,11 +10,16 @@ import 'package:daily_bread/presentation/providers/reading_plan_provider.dart';
 import 'package:daily_bread/presentation/providers/user_provider.dart';
 import 'package:daily_bread/presentation/screens/reading_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeReadingDataSource extends BibleDataSource {
+  _FakeReadingDataSource({this.blankVerse = false});
+
+  final bool blankVerse;
+
   @override
   Future<void> preloadBook(String book, BibleTranslation translation) async {}
 
@@ -40,7 +45,9 @@ class _FakeReadingDataSource extends BibleDataSource {
           book: 'Genesis',
           chapter: 1,
           verse: index + 1,
-          text: index == 0
+          text: blankVerse && index == 1
+              ? ' '
+              : index == 0
               ? 'In the beginning God created the heaven and the earth.'
               : 'Genesis 1:${index + 1} sample verse text.',
         ),
@@ -56,6 +63,7 @@ void main() {
     WidgetTester tester, {
     List<VerseBookmark>? initialBookmarks,
     int? highlightedVerse,
+    bool blankVerse = false,
   }) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
@@ -64,7 +72,9 @@ void main() {
       await localDataSource.saveBookmarks(initialBookmarks);
     }
 
-    final bibleProvider = BibleProvider(_FakeReadingDataSource());
+    final bibleProvider = BibleProvider(
+      _FakeReadingDataSource(blankVerse: blankVerse),
+    );
     final userProvider = UserProvider(UserRepository(localDataSource));
     final bookmarksProvider = BookmarksProvider(localDataSource);
     final planProvider = ReadingPlanProvider(localDataSource);
@@ -99,6 +109,72 @@ void main() {
 
     return (bookmarksProvider: bookmarksProvider);
   }
+
+  testWidgets('explains a verse with no text in the bundled translation', (
+    tester,
+  ) async {
+    await pumpReadingScreen(tester, blankVerse: true);
+
+    expect(
+      find.text('Verse text not available in this translation.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('In the beginning God created the heaven and the earth.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('reading actions have distinct accessible labels', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await pumpReadingScreen(tester);
+
+    for (final label in ['Choose chapter', 'Bookmarks', 'Search verses']) {
+      final control = find.byTooltip(label);
+      expect(control, findsOneWidget);
+      final data = tester.getSemantics(control).getSemanticsData();
+      expect(data.tooltip, label);
+      expect(data.label, isEmpty);
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+    }
+
+    for (final verse in [1, 2]) {
+      final label = 'Add bookmark for Genesis 1:$verse; long press to add note';
+      final control = find.byTooltip(label);
+      expect(control, findsOneWidget);
+      final data = tester.getSemantics(control).getSemanticsData();
+      expect(data.tooltip, label);
+      expect(data.label, isEmpty);
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+      expect(data.hasAction(SemanticsAction.longPress), isTrue);
+    }
+
+    await tester.tap(
+      find.byTooltip('Add bookmark for Genesis 1:1; long press to add note'),
+    );
+    await tester.pumpAndSettle();
+
+    const removeLabel =
+        'Remove bookmark for Genesis 1:1; long press to edit note';
+    expect(find.byTooltip(removeLabel), findsOneWidget);
+    expect(
+      find.byTooltip('Add bookmark for Genesis 1:1; long press to add note'),
+      findsNothing,
+    );
+    final data = tester
+        .getSemantics(find.byTooltip(removeLabel))
+        .getSemanticsData();
+    expect(data.tooltip, removeLabel);
+    expect(data.label, isEmpty);
+    expect(data.flagsCollection.isButton, isTrue);
+    expect(data.hasAction(SemanticsAction.tap), isTrue);
+    expect(data.hasAction(SemanticsAction.longPress), isTrue);
+    semantics.dispose();
+  });
 
   testWidgets('long press bookmark opens note dialog and saves note', (
     tester,
@@ -149,7 +225,9 @@ void main() {
     expect(result.bookmarksProvider.bookmarks.first.note, isNull);
   });
 
-  testWidgets('auto-scrolls to highlighted verse in long chapter', (tester) async {
+  testWidgets('auto-scrolls to highlighted verse in long chapter', (
+    tester,
+  ) async {
     await pumpReadingScreen(tester, highlightedVerse: 70);
 
     expect(find.text('Jumped to verse 70'), findsOneWidget);

@@ -4,8 +4,8 @@ class ReadingPlans {
   static const List<ReadingPlan> all = [
     ReadingPlan(
       id: 'gospels_30',
-      title: 'The Gospels in 30 Days',
-      description: 'Walk through the life of Jesus in a focused month.',
+      title: 'Matthew and the Beginning of Mark in 30 Days',
+      description: 'Read Matthew 1–28 and Mark 1–2, one chapter a day.',
       chapters: [
         ReadingReference(book: 'Matthew', chapter: 1),
         ReadingReference(book: 'Matthew', chapter: 2),
@@ -70,7 +70,7 @@ class ReadingPlans {
     ReadingPlan(
       id: 'wisdom_14',
       title: 'Wisdom in 14 Days',
-      description: 'A two-week rhythm through Psalms and Proverbs.',
+      description: 'Read Psalms 1–10 and Proverbs 1–4, one chapter a day.',
       chapters: [
         ReadingReference(book: 'Psalms', chapter: 1),
         ReadingReference(book: 'Psalms', chapter: 2),
