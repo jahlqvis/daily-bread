@@ -141,6 +141,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
+    if (context.read<AppServicesProvider>().profileSafetyBlocked) return;
+
     final authProvider = context.read<AuthProvider>();
     if (!_hasAccountLinkedSync(authProvider)) {
       if (showFeedback && mounted) {
@@ -201,17 +203,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
+    final hasAccountLinkedSync = _hasAccountLinkedSync(authProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('DailyBread'),
         actions: [
           const TranslationSelector(),
           IconButton(
-            icon: const Icon(Icons.person_outline),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SignInScreen()),
+            icon: Icon(
+              hasAccountLinkedSync
+                  ? Icons.account_circle_outlined
+                  : Icons.person_outline,
             ),
+            onPressed: () {
+              if (hasAccountLinkedSync) {
+                _showAccountSheet(context, authProvider);
+                return;
+              }
+              if (authProvider.accountChangesBlocked) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Account sign-in is temporarily unavailable while local data protection is being updated.',
+                    ),
+                  ),
+                );
+                return;
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SignInScreen()),
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.search),
@@ -508,6 +533,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : 'Last synced ${DateFormat('MMM d, HH:mm').format(syncedAt)}';
         final backendLabel = servicesProvider.cloudBackendLabel;
         final hasAccountLinkedSync = _hasAccountLinkedSync(authProvider);
+        final paused = servicesProvider.profileSafetyBlocked;
         final accountEmail = authProvider.currentUser?.email;
 
         return Card(
@@ -526,12 +552,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   style: TextStyle(color: Colors.grey[700]),
                 ),
                 const SizedBox(height: 4),
-                Text(syncedLabel, style: TextStyle(color: Colors.grey[700])),
+                Text(
+                  paused ? 'Sync paused' : syncedLabel,
+                  style: TextStyle(color: Colors.grey[700]),
+                ),
                 const SizedBox(height: 4),
                 Text(
-                  _syncStatusLabel(servicesProvider),
+                  paused
+                      ? 'Status: Paused'
+                      : _syncStatusLabel(servicesProvider),
                   style: TextStyle(
-                    color: _syncStatusColor(servicesProvider),
+                    color: paused
+                        ? Colors.orange[800]
+                        : _syncStatusColor(servicesProvider),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -576,7 +609,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  hasAccountLinkedSync
+                  paused
+                      ? 'Account sync is paused while local data protection is being updated. Your local data is unchanged.'
+                      : hasAccountLinkedSync
                       ? 'Cloud sync is active for this account.'
                       : 'Sign in to back up and sync across devices.',
                   style: TextStyle(color: Colors.grey[700], fontSize: 13),
@@ -598,7 +633,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: authProvider.isLoading
+                          onPressed:
+                              authProvider.isLoading ||
+                                  authProvider.accountChangesBlocked
                               ? null
                               : () => _openCreateAccount(context),
                           child: const Text('Create account'),
@@ -607,7 +644,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       const SizedBox(width: 8),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: authProvider.isLoading
+                          onPressed:
+                              authProvider.isLoading ||
+                                  authProvider.accountChangesBlocked
                               ? null
                               : () => _openSignIn(context),
                           child: const Text('Sign in'),
@@ -619,7 +658,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: servicesProvider.isSyncing
+                    onPressed: servicesProvider.isSyncing || paused
                         ? null
                         : () => _performSync(
                             showFeedback: true,
@@ -637,7 +676,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 : Icons.lock_outline,
                           ),
                     label: Text(
-                      servicesProvider.isSyncing
+                      paused
+                          ? 'Sync paused'
+                          : servicesProvider.isSyncing
                           ? 'Syncing...'
                           : hasAccountLinkedSync
                           ? 'Sync now'
@@ -645,7 +686,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
-                if (servicesProvider.syncStatus == SyncStatus.failed) ...[
+                if (!paused &&
+                    servicesProvider.syncStatus == SyncStatus.failed) ...[
                   const SizedBox(height: 8),
                   Text(
                     _syncErrorSummary(servicesProvider),
@@ -1142,15 +1184,85 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _signOutAccount(BuildContext context) async {
     final authProvider = context.read<AuthProvider>();
+    if (authProvider.accountChangesBlocked) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Sign out?'),
+          content: const Text(
+            'Local data will remain on this device and may be visible to the next device user. Removing the local copy is not yet available; cloud data will not be deleted.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Sign out and keep local data'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return;
+    }
     await authProvider.signOut();
     if (!context.mounted) {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Signed out. Cloud sync disabled.'),
+      SnackBar(
+        content: Text(
+          authProvider.errorMessage ?? 'Signed out. Cloud sync disabled.',
+        ),
         duration: Duration(seconds: 2),
       ),
+    );
+  }
+
+  Future<void> _showAccountSheet(
+    BuildContext context,
+    AuthProvider authProvider,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        final email = authProvider.currentUser?.email;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Account options',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  email == null || email.isEmpty
+                      ? 'Signed in'
+                      : 'Signed in as $email',
+                  style: TextStyle(color: Colors.grey[800]),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.of(sheetContext).pop();
+                      await _signOutAccount(context);
+                    },
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Sign out'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

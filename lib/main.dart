@@ -29,10 +29,12 @@ void main() async {
   final userRepository = UserRepository(localDataSource);
   final authService = FirebaseAuthService();
   final localCloudSyncService = LocalCloudSyncService(localDataSource);
-  final cloudSyncService = FirebaseCloudSyncService(
-    localDataSource: localDataSource,
-    config: FirebaseBackendConfig.fromEnvironment(),
-    fallback: localCloudSyncService,
+  final cloudSyncService = PausedCloudSyncService(
+    FirebaseCloudSyncService(
+      localDataSource: localDataSource,
+      config: FirebaseBackendConfig.fromEnvironment(),
+      fallback: localCloudSyncService,
+    ),
   );
   final notificationsPlugin = FlutterLocalNotificationsPlugin();
   final dailyReminderService = LocalNotificationReminderService(
@@ -65,13 +67,14 @@ void main() async {
           create: (_) => BookmarksProvider(localDataSource)..loadBookmarks(),
         ),
         ChangeNotifierProvider(
-          create: (_) => AuthProvider(authService),
+          create: (_) => AuthProvider(authService, accountChangesBlocked: true),
         ),
         ChangeNotifierProvider(
           create: (_) => AppServicesProvider(
             cloudSyncService,
             dailyReminderService,
             localDataSource: localDataSource,
+            profileSafetyBlocked: true,
           ),
         ),
       ],
