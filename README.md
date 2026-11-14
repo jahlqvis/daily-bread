@@ -1,15 +1,16 @@
 # DailyBread
 
-DailyBread is a Flutter app for daily Bible reading with gamification (streaks, XP, levels, badges), local-first data storage, and Firebase-backed cloud sync.
+DailyBread is a Flutter app for daily Bible reading with gamification (streaks, XP, levels, badges) and local-first data storage.
 
-It is designed to work even when Firebase is not configured by falling back to local backup behavior.
+**Account sign-in, sign-up, and cloud sync are temporarily paused** to prevent unsafe mixing of local and account data. Reading and local progress remain available without Firebase. An existing signed-in user can sign out after a warning that local data remains on the device. See `docs/account-data-safety.md` and `SPEC.md` for the remaining work.
 
 ## Features
 
-- Daily reading flow with plan tracking and translation support (`KJV`, `ASV`, `WEB`)
+- Daily reading flow with plan tracking and a first-launch translation choice (`KJV`, `ASV`, `WEB`)
+- Bundled Bible text and fonts for offline reading without third-party font requests
 - Gamified user progress: streaks, XP, levels, badges
 - Bookmarking with tombstones for delete conflict handling
-- Cloud sync with pull/merge, retry/backoff, offline queueing, and lifecycle-triggered auto-sync
+- Cloud sync infrastructure with pull/merge, retry/backoff, offline queueing, and lifecycle-triggered auto-sync (currently paused)
 - Sync diagnostics in-app (`View details`, `Copy diagnostics`, `Report issue`, `Reset diagnostics`)
 - Balanced diagnostics redaction for share/report workflows
 - CI coverage for Flutter analyze/tests/web build, Android debug build, iOS simulator build, and Cloud Functions tests
@@ -41,7 +42,7 @@ It is designed to work even when Firebase is not configured by falling back to l
 - Flutter stable
 - Xcode (for iOS simulator builds)
 - CocoaPods (`pod`)
-- Node.js (for Cloud Functions tests)
+- Node.js 22 (for Cloud Functions tests)
 
 ### Install dependencies
 
@@ -49,6 +50,8 @@ It is designed to work even when Firebase is not configured by falling back to l
 flutter pub get
 cd ios && pod install
 ```
+
+For Cloud Functions checks, run `npm ci` in `functions/`.
 
 ### Run locally
 
@@ -73,9 +76,9 @@ flutter devices
 flutter run -d <SIMULATOR_UDID>
 ```
 
-## Firebase Configuration (Optional but Recommended)
+## Firebase Configuration
 
-Cloud sync can be enabled with compile-time `--dart-define` values.
+The Firebase backend uses compile-time `--dart-define` values. Supplying these values does **not** enable the temporarily paused account and sync flows.
 
 Required core values:
 
@@ -106,9 +109,11 @@ flutter run \
   --dart-define=FIREBASE_IOS_APP_ID=...
 ```
 
-If these values are missing, DailyBread runs with local fallback sync.
+If these values are missing, DailyBread still supports local reading and progress. No cross-device backup occurs while sync is paused.
 
 ## Cloud Sync Notes
+
+The following describes existing infrastructure, not currently active app behavior. The account-deletion callable is also disabled until its safety requirements are implemented.
 
 - Snapshot model: user state + bookmarks + tombstones
 - Merge strategy combines local and remote snapshots with timestamp-based conflict resolution
@@ -130,6 +135,8 @@ Run Functions tests:
 ```bash
 cd functions && npm test
 ```
+
+For local Firebase emulator checks, see `docs/firebase-emulator-tests.md`.
 
 ## CI
 
