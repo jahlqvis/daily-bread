@@ -2,6 +2,8 @@
 
 Use this guide to validate behavior on real devices and confirm baseline readiness for internal distribution.
 
+**Current release blocker:** account changes and sync are paused pending profile isolation and consent. The sync scenarios below cannot pass until that work is complete; see `docs/account-data-safety.md` and `SPEC.md`.
+
 ## 1) Test Matrix
 
 Run the smoke suite on at least:

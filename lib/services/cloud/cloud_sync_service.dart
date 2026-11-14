@@ -278,6 +278,32 @@ abstract class CloudSyncService {
   DateTime? getLastSyncedAt();
 }
 
+/// Fail-closed adapter for the unscoped application storage. Initializing the
+/// backend remains necessary for authentication and password reset, but no
+/// snapshot may reach it until profile ownership and consent are implemented.
+class PausedCloudSyncService implements CloudSyncService {
+  final CloudSyncService _backend;
+
+  PausedCloudSyncService(this._backend);
+
+  @override
+  bool get isAvailable => false;
+
+  @override
+  String get backendLabel => 'Sync paused';
+
+  @override
+  Future<void> initialize() => _backend.initialize();
+
+  @override
+  DateTime? getLastSyncedAt() => null;
+
+  @override
+  Future<DateTime> syncSnapshot(CloudSyncSnapshot snapshot) async {
+    throw StateError('Sync is paused until local profiles are isolated.');
+  }
+}
+
 class LocalCloudSyncService implements CloudSyncService {
   final LocalDataSource _localDataSource;
 

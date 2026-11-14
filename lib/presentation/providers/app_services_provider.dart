@@ -82,6 +82,7 @@ class AppServicesProvider extends ChangeNotifier {
   final Duration _baseRetryDelay;
   final Duration _maxRetryDelay;
   final int _maxRetryAttempts;
+  final bool profileSafetyBlocked;
 
   AppServicesProvider(
     this._cloudSyncService,
@@ -89,11 +90,12 @@ class AppServicesProvider extends ChangeNotifier {
     SyncConnectivity? syncConnectivity,
     SyncTelemetry? syncTelemetry,
     LocalDataSource? localDataSource,
+    this.profileSafetyBlocked = false,
     Duration baseRetryDelay = _defaultBaseRetryDelay,
     Duration maxRetryDelay = _defaultMaxRetryDelay,
     int maxRetryAttempts = _defaultMaxRetryAttempts,
   }) : _syncConnectivity =
-            syncConnectivity ?? DeviceSyncConnectivity(Connectivity()),
+           syncConnectivity ?? DeviceSyncConnectivity(Connectivity()),
        _syncTelemetry = syncTelemetry,
        _localDataSource = localDataSource,
        _baseRetryDelay = baseRetryDelay,
@@ -205,6 +207,12 @@ class AppServicesProvider extends ChangeNotifier {
     bool immediate = false,
     Future<void> Function()? onSynced,
   }) async {
+    if (profileSafetyBlocked) {
+      _syncStatus = SyncStatus.failed;
+      _syncMessage = 'Sync is temporarily paused to protect local data.';
+      notifyListeners();
+      return;
+    }
     await _connectivityReady;
 
     _queuedSyncRequest = _SyncRequest(

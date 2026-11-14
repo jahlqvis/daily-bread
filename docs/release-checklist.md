@@ -2,6 +2,8 @@
 
 Use this checklist before merging high-impact changes or cutting a release candidate.
 
+**Current release blocker:** account sign-in and sync are paused pending profile isolation and consent; account deletion is not yet complete. Do not treat the sync smoke scenarios below as passing until those features are safely enabled and verified. See `docs/account-data-safety.md` and `SPEC.md`.
+
 For real-device coverage and internal distribution prerequisites, use `docs/device-smoke-test.md` in addition to this checklist.
 
 ## 1) Environment

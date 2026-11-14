@@ -12,14 +12,18 @@ abstract class AuthTelemetry {
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
   final AuthTelemetry? _authTelemetry;
+  final bool accountChangesBlocked;
   StreamSubscription<AuthUser?>? _authSubscription;
 
   AuthUser? _currentUser;
   bool _isLoading = false;
   String? _errorMessage;
 
-  AuthProvider(this._authService, {AuthTelemetry? authTelemetry})
-    : _authTelemetry = authTelemetry {
+  AuthProvider(
+    this._authService, {
+    AuthTelemetry? authTelemetry,
+    this.accountChangesBlocked = false,
+  }) : _authTelemetry = authTelemetry {
     _currentUser = _authService.currentUser;
     _authSubscription = _authService.authStateChanges().listen((user) {
       _currentUser = user;
@@ -43,6 +47,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signInWithEmailPassword(String email, String password) async {
+    if (_blockAccountChange()) return;
     await _runAuthAction(
       () => _authService.signInWithEmailPassword(email, password),
       successEvent: 'auth_sign_in_success',
@@ -52,6 +57,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signUpWithEmailPassword(String email, String password) async {
+    if (_blockAccountChange()) return;
     if (!isAnonymous) {
       await _runAuthAction(
         () => _authService.signUpWithEmailPassword(email, password),
@@ -97,6 +103,7 @@ class AuthProvider extends ChangeNotifier {
     String email,
     String password,
   ) async {
+    if (_blockAccountChange()) return;
     await _runAuthAction(
       () => _authService.linkAnonymousWithEmailPassword(email, password),
       successEvent: 'auth_link_success',
@@ -121,6 +128,14 @@ class AuthProvider extends ChangeNotifier {
       failureEvent: 'auth_sign_out_failure',
       metadata: _authMetadata(action: 'sign_out'),
     );
+  }
+
+  bool _blockAccountChange() {
+    if (!accountChangesBlocked) return false;
+    _errorMessage =
+        'Account sign-in is temporarily unavailable while local data protection is being updated.';
+    notifyListeners();
+    return true;
   }
 
   void clearError() {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:daily_bread/data/datasources/bible_data_source.dart';
 import 'package:daily_bread/data/datasources/local_data_source.dart';
+import 'package:daily_bread/data/models/user_model.dart';
 import 'package:daily_bread/data/models/verse_bookmark_model.dart';
 import 'package:daily_bread/data/repositories/user_repository.dart';
 import 'package:daily_bread/presentation/providers/app_services_provider.dart';
@@ -195,6 +196,7 @@ Future<_HomeTestHarness> _pumpHome(
   Duration? baseRetryDelay,
   Duration? maxRetryDelay,
   SyncTelemetry? telemetry,
+  bool profileSafetyBlocked = false,
   AuthUser? authUser = const AuthUser(
     uid: 'auth-user',
     email: 'user@example.com',
@@ -214,11 +216,15 @@ Future<_HomeTestHarness> _pumpHome(
     syncConnectivity: connectivity,
     localDataSource: localDataSource,
     syncTelemetry: telemetry,
+    profileSafetyBlocked: profileSafetyBlocked,
     baseRetryDelay: baseRetryDelay ?? const Duration(seconds: 2),
     maxRetryDelay: maxRetryDelay ?? const Duration(minutes: 5),
   );
   final authService = _FakeAuthService(authUser);
-  final authProvider = AuthProvider(authService);
+  final authProvider = AuthProvider(
+    authService,
+    accountChangesBlocked: profileSafetyBlocked,
+  );
 
   await Future.wait([
     userProvider.loadUser(),
@@ -267,6 +273,139 @@ Future<_HomeTestHarness> _pumpHome(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('safety pause blocks launch sync and warns before sign out', (
+    tester,
+  ) async {
+    final syncService = _FakeCloudSyncService();
+    final harness = await _pumpHome(
+      tester,
+      syncService: syncService,
+      connectivity: _FakeConnectivity(false),
+      enableAutoSync: true,
+      profileSafetyBlocked: true,
+    );
+    await harness.localDataSource.saveUser(UserModel(totalXp: 123));
+    await tester.pump(const Duration(seconds: 1));
+    expect(syncService.callCount, 0);
+    expect(find.text('Status: Paused'), findsOneWidget);
+    expect(find.text('Cloud sync is active for this account.'), findsNothing);
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Sign out'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Sign out'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('may be visible to the next device user'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(harness.authProvider.isAuthenticated, isTrue);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Sign out'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign out and keep local data'));
+    await tester.pumpAndSettle();
+    expect(harness.authProvider.isAuthenticated, isFalse);
+    expect((await harness.localDataSource.getUser()).totalXp, 123);
+    expect(syncService.callCount, 0);
+    await harness.dispose();
+  });
+
+  testWidgets('paused offline requests do not queue for a later account', (
+    tester,
+  ) async {
+    final syncService = _FakeCloudSyncService();
+    final connectivity = _FakeConnectivity(true);
+    final harness = await _pumpHome(
+      tester,
+      syncService: syncService,
+      connectivity: connectivity,
+      profileSafetyBlocked: true,
+    );
+    await harness.appServicesProvider.syncNow(
+      user: UserModel(totalXp: 123),
+      bookmarks: const [],
+    );
+    await harness.authProvider.signOut();
+    connectivity.setOffline(false);
+    await tester.pump(const Duration(seconds: 1));
+    expect(syncService.callCount, 0);
+    await harness.dispose();
+  });
+
+  testWidgets('safety pause disables account entry and manual sync', (
+    tester,
+  ) async {
+    final syncService = _FakeCloudSyncService();
+    final harness = await _pumpHome(
+      tester,
+      syncService: syncService,
+      connectivity: _FakeConnectivity(false),
+      authUser: null,
+      profileSafetyBlocked: true,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Create account'),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.widgetWithText(ElevatedButton, 'Sign in'),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.widgetWithText(ElevatedButton, 'Sync paused'),
+          )
+          .onPressed,
+      isNull,
+    );
+    await harness.authProvider.signInWithEmailPassword('a@b.com', 'password');
+    expect(harness.authProvider.isAuthenticated, isFalse);
+    expect(
+      harness.authProvider.errorMessage,
+      contains('temporarily unavailable'),
+    );
+    await harness.authProvider.signUpWithEmailPassword('a@b.com', 'password');
+    expect(harness.authProvider.isAuthenticated, isFalse);
+    await harness.authProvider.linkAnonymousWithEmailPassword(
+      'a@b.com',
+      'password',
+    );
+    expect(harness.authProvider.isAuthenticated, isFalse);
+    await harness.appServicesProvider.syncNow(
+      user: harness.userProvider.user,
+      bookmarks: const [],
+    );
+    expect(syncService.callCount, 0);
+    await harness.dispose();
+  });
+
+  test('paused cloud adapter never forwards snapshots', () async {
+    final backend = _FakeCloudSyncService();
+    final paused = PausedCloudSyncService(backend);
+    await paused.initialize();
+    expect(paused.isAvailable, isFalse);
+    expect(paused.getLastSyncedAt(), isNull);
+    await expectLater(
+      paused.syncSnapshot(
+        CloudSyncSnapshot(
+          syncedAt: DateTime.now(),
+          user: UserModel(),
+          bookmarks: const [],
+        ),
+      ),
+      throwsStateError,
+    );
+    expect(backend.callCount, 0);
+  });
 
   testWidgets('shows failed sync status with retry controls', (tester) async {
     String? clipboardText;
@@ -482,6 +621,55 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SignInScreen), findsOneWidget);
+
+    await harness.dispose();
+  });
+
+  testWidgets('person icon opens sign-in screen when signed out', (
+    tester,
+  ) async {
+    final harness = await _pumpHome(
+      tester,
+      syncService: _FakeCloudSyncService(),
+      connectivity: _FakeConnectivity(false),
+      enableAutoSync: false,
+      authUser: null,
+    );
+
+    await tester.tap(find.byIcon(Icons.person_outline));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SignInScreen), findsOneWidget);
+
+    await harness.dispose();
+  });
+
+  testWidgets('person icon shows account sheet when signed in', (tester) async {
+    const authUser = AuthUser(
+      uid: 'auth-user',
+      email: 'disciple@example.com',
+      isAnonymous: false,
+    );
+    final harness = await _pumpHome(
+      tester,
+      syncService: _FakeCloudSyncService(),
+      connectivity: _FakeConnectivity(false),
+      enableAutoSync: false,
+      authUser: authUser,
+    );
+
+    await tester.tap(find.byIcon(Icons.account_circle_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Account options'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text('Signed in as disciple@example.com'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(SignInScreen), findsNothing);
 
     await harness.dispose();
   });
