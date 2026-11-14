@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   static const Color primaryColor = Color(0xFF2E7D32);
@@ -8,11 +7,11 @@ class AppTheme {
   static const Color backgroundColor = Color(0xFFFAFAFA);
   static const Color surfaceColor = Colors.white;
   static const Color errorColor = Color(0xFFD32F2F);
-  
+
   static const Color streakFireColor = Color(0xFFFF6B35);
   static const Color xpGoldColor = Color(0xFFFFD700);
   static const Color levelPurpleColor = Color(0xFF7B1FA2);
-  
+
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
@@ -25,13 +24,15 @@ class AppTheme {
         error: errorColor,
       ),
       scaffoldBackgroundColor: backgroundColor,
-      textTheme: GoogleFonts.notoSansTextTheme(),
+      fontFamily: 'NotoSans',
+      textTheme: ThemeData.light().textTheme.apply(fontFamily: 'NotoSans'),
       appBarTheme: AppBarTheme(
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.notoSans(
+        titleTextStyle: const TextStyle(
+          fontFamily: 'NotoSans',
           fontSize: 20,
           fontWeight: FontWeight.w600,
           color: Colors.white,
@@ -39,9 +40,7 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

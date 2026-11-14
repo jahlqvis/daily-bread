@@ -8,6 +8,31 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('ReadingPlanProvider', () {
+    test(
+      'preserves progress and rewards for the renamed Gospels plan',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'active_plan_id': 'gospels_30',
+          'completed_plan_reward_ids': ['gospels_30'],
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final provider = ReadingPlanProvider(LocalDataSource(prefs));
+        await provider.loadPlanState();
+
+        final user = UserModel(
+          readingProgress: {
+            'Matthew': {1, 2},
+            'Mark': {1},
+          },
+        );
+
+        expect(provider.activePlanId, 'gospels_30');
+        expect(provider.completedCount(user), 3);
+        expect(provider.nextChapter(user)!.id, 'Matthew:3');
+        expect(provider.hasClaimedCompletionReward('gospels_30'), isTrue);
+      },
+    );
+
     test('loads and persists active plan id', () async {
       SharedPreferences.setMockInitialValues({'active_plan_id': 'john_21'});
       final prefs = await SharedPreferences.getInstance();

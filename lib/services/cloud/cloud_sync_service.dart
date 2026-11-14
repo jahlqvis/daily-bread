@@ -333,7 +333,8 @@ class FirebaseCloudSyncService implements CloudSyncService {
        _injectedFirebaseFunctions = firebaseFunctions,
        _nowProvider = nowProvider ?? DateTime.now;
 
-  FirebaseAuth get _firebaseAuth => _injectedFirebaseAuth ?? FirebaseAuth.instance;
+  FirebaseAuth get _firebaseAuth =>
+      _injectedFirebaseAuth ?? FirebaseAuth.instance;
   FirebaseFirestore get _firebaseFirestore =>
       _injectedFirebaseFirestore ?? FirebaseFirestore.instance;
   FirebaseFunctions get _firebaseFunctions =>
@@ -366,7 +367,6 @@ class FirebaseCloudSyncService implements CloudSyncService {
         await Firebase.initializeApp(options: options);
       }
 
-      await _ensureSignedIn();
       _isAvailable = true;
     } catch (_) {
       _isAvailable = false;

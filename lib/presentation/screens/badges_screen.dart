@@ -9,9 +9,7 @@ class BadgesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Badges'),
-      ),
+      appBar: AppBar(title: const Text('Badges')),
       body: Consumer<UserProvider>(
         builder: (context, userProvider, _) {
           final earnedBadges = userProvider.user.badges;
@@ -100,32 +98,40 @@ class BadgesScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBadgesSection(String title, List<_Badge> badges, List<String> earned) {
+  Widget _buildBadgesSection(
+    String title,
+    List<_Badge> badges,
+    List<String> earned,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            childAspectRatio: 0.85,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-          ),
-          itemCount: badges.length,
-          itemBuilder: (context, index) {
-            final badge = badges[index];
-            final isEarned = earned.contains(badge.id);
-            return _buildBadgeCard(badge, isEarned);
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // Give scaled text more room, and let each card grow vertically.
+            final scaledWidth =
+                130 * MediaQuery.textScalerOf(context).scale(12) / 12;
+            final columns = ((constraints.maxWidth + 12) / (scaledWidth + 12))
+                .floor()
+                .clamp(1, 3);
+            final cardWidth =
+                (constraints.maxWidth - 12 * (columns - 1)) / columns;
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final badge in badges)
+                  SizedBox(
+                    width: cardWidth,
+                    child: _buildBadgeCard(badge, earned.contains(badge.id)),
+                  ),
+              ],
+            );
           },
         ),
       ],
@@ -133,47 +139,59 @@ class BadgesScreen extends StatelessWidget {
   }
 
   Widget _buildBadgeCard(_Badge badge, bool isEarned) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isEarned ? badge.color.withAlpha(25) : Colors.grey[100],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isEarned ? badge.color : Colors.grey[300]!,
-          width: 2,
+    final status = isEarned ? 'Earned' : 'Locked';
+    return Semantics(
+      container: true,
+      label: '${badge.name}, ${badge.description}, $status',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isEarned ? badge.color.withAlpha(25) : Colors.grey[100],
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isEarned ? badge.color : Colors.grey[300]!,
+              width: 2,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                badge.icon,
+                size: 40,
+                color: isEarned ? badge.color : Colors.grey,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                badge.name,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                badge.description,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: Colors.black87),
+              ),
+              const SizedBox(height: 8),
+              Icon(
+                isEarned ? Icons.check_circle : Icons.lock,
+                size: 16,
+                color: isEarned ? Colors.green : Colors.grey[600],
+              ),
+              Text(
+                status,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: Colors.black87),
+              ),
+            ],
+          ),
         ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            badge.icon,
-            size: 40,
-            color: isEarned ? badge.color : Colors.grey,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            badge.name,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: isEarned ? Colors.black87 : Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 4),
-          if (isEarned)
-            const Icon(
-              Icons.check_circle,
-              size: 16,
-              color: Colors.green,
-            )
-          else
-            Icon(
-              Icons.lock,
-              size: 16,
-              color: Colors.grey[400],
-            ),
-        ],
       ),
     );
   }

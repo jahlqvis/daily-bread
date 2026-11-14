@@ -54,6 +54,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.bookmarks_outlined),
+            tooltip: 'Bookmarks',
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const BookmarksScreen()),
@@ -61,6 +62,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.search),
+            tooltip: 'Search verses',
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const VerseSearchScreen()),
@@ -592,7 +594,9 @@ class _ReadingScreenState extends State<ReadingScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  passage.text,
+                  passage.text.trim().isEmpty
+                      ? 'Verse text not available in this translation.'
+                      : passage.text,
                   style: const TextStyle(fontSize: 16, height: 1.6),
                 ),
               ),
@@ -614,8 +618,8 @@ class _ReadingScreenState extends State<ReadingScreen> {
                       : Colors.grey[600],
                 ),
                 tooltip: isBookmarked
-                    ? 'Tap: remove, hold: edit note'
-                    : 'Tap: add, hold: add note',
+                    ? 'Remove bookmark for ${passage.reference}; long press to edit note'
+                    : 'Add bookmark for ${passage.reference}; long press to add note',
               ),
             ],
           ),

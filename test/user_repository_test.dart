@@ -39,6 +39,104 @@ void main() {
       expect(updated.longestStreak, 2);
     });
 
+    test(
+      'repeating an already read chapter does not award XP or change streak',
+      () async {
+        final first = await repository.markChapterAsRead('Genesis', 1);
+        currentTime = currentTime.add(const Duration(days: 1));
+
+        final repeated = await repository.markChapterAsRead('Genesis', 1);
+
+        expect(repeated.totalXp, first.totalXp);
+        expect(repeated.currentStreak, first.currentStreak);
+        expect(repeated.lastReadDate, first.lastReadDate);
+        expect(repeated.streakFreezes, first.streakFreezes);
+      },
+    );
+
+    test(
+      'concurrent submissions preserve both chapters and award XP once',
+      () async {
+        await Future.wait([
+          repository.markChapterAsRead('Genesis', 1),
+          repository.markChapterAsRead('Genesis', 1),
+          repository.markChapterAsRead('Genesis', 2),
+        ]);
+
+        final saved = await repository.getUser();
+        expect(saved.readingProgress['Genesis'], {1, 2});
+        expect(saved.totalXp, AppConstants.xpPerChapter * 2);
+        expect(saved.currentStreak, 1);
+      },
+    );
+
+    test('adding a chapter does not mutate the original user model', () async {
+      final original = UserModel(
+        readingProgress: {
+          'Genesis': {1},
+        },
+      );
+      dataSource.seedUser(original);
+
+      await repository.markChapterAsRead('Genesis', 2);
+
+      expect(original.readingProgress['Genesis'], {1});
+    });
+
+    test('a failed save does not block later updates', () async {
+      dataSource.failNextSave = true;
+      await expectLater(
+        repository.markChapterAsRead('Genesis', 1),
+        throwsStateError,
+      );
+
+      final saved = await repository.markChapterAsRead('Genesis', 2);
+      expect(saved.readingProgress['Genesis'], {2});
+      expect(saved.totalXp, AppConstants.xpPerChapter);
+    });
+
+    test(
+      'consecutive calendar days stay consecutive across daylight saving',
+      () async {
+        currentTime = DateTime(2024, 3, 10, 12);
+        dataSource.seedUser(
+          UserModel(
+            currentStreak: 3,
+            longestStreak: 3,
+            lastReadDate: DateTime(2024, 3, 9, 12),
+            readingProgress: {
+              'Genesis': {1},
+            },
+          ),
+        );
+
+        final updated = await repository.markChapterAsRead('Genesis', 2);
+        expect(updated.currentStreak, 4);
+        expect(updated.streakFreezes, 1);
+      },
+    );
+
+    test(
+      'moving the clock back does not reset streak or last read date',
+      () async {
+        final future = currentTime.add(const Duration(days: 1));
+        dataSource.seedUser(
+          UserModel(
+            currentStreak: 4,
+            longestStreak: 4,
+            lastReadDate: future,
+            readingProgress: {
+              'Genesis': {1},
+            },
+          ),
+        );
+
+        final updated = await repository.markChapterAsRead('Genesis', 2);
+        expect(updated.currentStreak, 4);
+        expect(updated.lastReadDate, future);
+      },
+    );
+
     test('streak day 7 grants bonus XP and streak badge', () async {
       dataSource.seedUser(
         UserModel(
@@ -64,6 +162,30 @@ void main() {
       expect(updated.currentStreak, 7);
       expect(updated.badges, contains('streak_7'));
     });
+
+    for (final milestone in [7, 30, 100]) {
+      test(
+        'day $milestone streak bonus is awarded only once that day',
+        () async {
+          dataSource.seedUser(
+            UserModel(
+              currentStreak: milestone - 1,
+              longestStreak: milestone - 1,
+              lastReadDate: currentTime.subtract(const Duration(days: 1)),
+              readingProgress: {
+                'Genesis': {1},
+              },
+            ),
+          );
+
+          final first = await repository.markChapterAsRead('Genesis', 2);
+          final second = await repository.markChapterAsRead('Genesis', 3);
+
+          expect(first.currentStreak, milestone);
+          expect(second.totalXp - first.totalXp, AppConstants.xpPerChapter);
+        },
+      );
+    }
 
     test('missing more than one day resets streak without freeze', () async {
       dataSource.seedUser(
@@ -111,9 +233,10 @@ void main() {
         200 + AppConstants.xpPerChapter + (AppConstants.xpPerDayStreak * 6),
       );
       expect(updated.streakFreezes, 0);
+      expect(updated.badges, contains('streak_freeze'));
     });
 
-    test('adds bookworm badge after reading 20 chapters in one book', () async {
+    test('adds bookworm badge only after completing a book', () async {
       dataSource.seedUser(
         UserModel(
           currentStreak: 1,
@@ -122,7 +245,7 @@ void main() {
           level: 3,
           lastReadDate: currentTime,
           readingProgress: {
-            'Genesis': {
+            'John': {
               1,
               2,
               3,
@@ -142,13 +265,37 @@ void main() {
               17,
               18,
               19,
+              20,
             },
           },
         ),
       );
 
-      final updated = await repository.markChapterAsRead('Genesis', 20);
+      final updated = await repository.markChapterAsRead('John', 21);
 
+      expect(updated.badges, contains('bookworm'));
+    });
+
+    test('does not award bookworm for an incomplete long book', () async {
+      dataSource.seedUser(
+        UserModel(
+          readingProgress: {
+            'Genesis': {for (var i = 1; i <= 19; i++) i},
+          },
+        ),
+      );
+      final updated = await repository.markChapterAsRead('Genesis', 20);
+      expect(updated.badges, isNot(contains('bookworm')));
+    });
+
+    test('awards bookworm for a one-chapter book', () async {
+      final updated = await repository.markChapterAsRead('Jude', 1);
+      expect(updated.badges, contains('bookworm'));
+    });
+
+    test('keeps previously earned badges', () async {
+      dataSource.seedUser(UserModel(badges: ['bookworm']));
+      final updated = await repository.markChapterAsRead('Genesis', 1);
       expect(updated.badges, contains('bookworm'));
     });
 
@@ -176,6 +323,7 @@ void main() {
 
 class _InMemoryLocalDataSource implements LocalDataSource {
   UserModel _user = UserModel();
+  bool failNextSave = false;
   String? _activePlanId;
   DateTime? _activePlanStartedAt;
   Set<String> _completedPlanRewardIds = <String>{};
@@ -207,6 +355,10 @@ class _InMemoryLocalDataSource implements LocalDataSource {
 
   @override
   Future<void> saveUser(UserModel user) async {
+    if (failNextSave) {
+      failNextSave = false;
+      throw StateError('save failed');
+    }
     _user = user;
   }
 

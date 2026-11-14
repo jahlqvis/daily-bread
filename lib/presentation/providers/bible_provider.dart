@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import '../../data/datasources/bible_data_source.dart';
+import '../../data/datasources/translation_preferences.dart';
 import '../../data/models/bible_passage_model.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/constants/bible_translation.dart';
 
 class BibleProvider extends ChangeNotifier {
   final BibleDataSource _dataSource;
+  final TranslationPreferences? _translationPreferences;
   bool _isLoading = true;
   String? _loadError;
   bool _isSearching = false;
@@ -16,8 +18,18 @@ class BibleProvider extends ChangeNotifier {
   String _selectedBook = 'Genesis';
   int _selectedChapter = 1;
   BibleTranslation _selectedTranslation = BibleTranslation.kjv;
+  bool _hasChosenTranslation = false;
+  String? _translationSaveError;
 
-  BibleProvider(this._dataSource);
+  BibleProvider(
+    this._dataSource, {
+    TranslationPreferences? translationPreferences,
+  }) : _translationPreferences = translationPreferences {
+    final savedTranslation = translationPreferences?.getTranslation();
+    _hasChosenTranslation =
+        translationPreferences == null || savedTranslation != null;
+    if (savedTranslation != null) _selectedTranslation = savedTranslation;
+  }
 
   bool get isLoading => _isLoading;
   String? get loadError => _loadError;
@@ -29,6 +41,8 @@ class BibleProvider extends ChangeNotifier {
   String get selectedBook => _selectedBook;
   int get selectedChapter => _selectedChapter;
   BibleTranslation get selectedTranslation => _selectedTranslation;
+  bool get hasChosenTranslation => _hasChosenTranslation;
+  String? get translationSaveError => _translationSaveError;
   List<BibleTranslation> get availableTranslations => BibleTranslation.values;
   List<String> get books => AppConstants.booksOfTheBible;
 
@@ -57,10 +71,24 @@ class BibleProvider extends ChangeNotifier {
   }
 
   Future<void> selectTranslation(BibleTranslation translation) async {
-    if (_selectedTranslation == translation) return;
+    if (_hasChosenTranslation && _selectedTranslation == translation) {
+      if (_translationSaveError != null) {
+        _translationSaveError = null;
+        notifyListeners();
+      }
+      return;
+    }
+    try {
+      await _translationPreferences?.saveTranslation(translation);
+    } catch (_) {
+      _translationSaveError = 'Could not save your choice. Please try again.';
+      notifyListeners();
+      return;
+    }
+    _translationSaveError = null;
+    _hasChosenTranslation = true;
     _selectedTranslation = translation;
     _highlightedVerse = null;
-    notifyListeners();
     await _withLoading(
       () => _dataSource.preloadBook(_selectedBook, translation),
     );

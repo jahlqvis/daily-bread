@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'auth_service.dart';
 
@@ -8,16 +9,28 @@ class FirebaseAuthService implements AuthService {
   FirebaseAuthService({FirebaseAuth? firebaseAuth})
     : _injectedFirebaseAuth = firebaseAuth;
 
-  FirebaseAuth get _firebaseAuth =>
-      _injectedFirebaseAuth ?? FirebaseAuth.instance;
+  bool get _isAvailable =>
+      _injectedFirebaseAuth != null ||
+      Firebase.apps.any((app) => app.name == '[DEFAULT]');
+
+  FirebaseAuth get _firebaseAuth {
+    if (!_isAvailable) {
+      throw StateError('Account services are unavailable on this device.');
+    }
+    return _injectedFirebaseAuth ?? FirebaseAuth.instance;
+  }
 
   @override
   Stream<AuthUser?> authStateChanges() {
+    if (!_isAvailable) {
+      return Stream<AuthUser?>.value(null);
+    }
     return _firebaseAuth.userChanges().map(_toAuthUser);
   }
 
   @override
-  AuthUser? get currentUser => _toAuthUser(_firebaseAuth.currentUser);
+  AuthUser? get currentUser =>
+      _isAvailable ? _toAuthUser(_firebaseAuth.currentUser) : null;
 
   @override
   Future<void> signInWithEmailPassword(String email, String password) async {
