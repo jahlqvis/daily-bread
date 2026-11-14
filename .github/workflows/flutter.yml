@@ -8,6 +8,8 @@ on:
 
 env:
   FLUTTER_CHANNEL: stable
+  # Keep CI on the tested SDK until the Material package migration is complete.
+  FLUTTER_VERSION: "3.41.7"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -51,10 +53,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pub-
 
-      - name: Set up Flutter ${{ env.FLUTTER_CHANNEL }}
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
         uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Flutter pub get
         run: flutter pub get
@@ -94,10 +97,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pods-
 
-      - name: Set up Flutter ${{ env.FLUTTER_CHANNEL }}
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
         uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Flutter pub get
         run: flutter pub get
@@ -152,10 +156,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Flutter ${{ env.FLUTTER_CHANNEL }}
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
         uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Flutter pub get
         run: flutter pub get
