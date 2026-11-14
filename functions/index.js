@@ -1,9 +1,13 @@
-const admin = require("firebase-admin");
+const { initializeApp } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
+const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 
-admin.initializeApp();
+initializeApp();
 
-const db = admin.firestore();
+const db = getFirestore();
+const DELETE_BOOKMARK_BATCH_SIZE = 400;
+const DELETE_ACCOUNT_MAX_AUTH_AGE_MS = 5 * 60 * 1000;
 const MAX_NOTE_LENGTH = 1000;
 const MAX_BOOKMARKS_PER_SYNC = 2000;
 const MAX_TOMBSTONES_PER_SYNC = 5000;
@@ -45,7 +49,7 @@ exports.syncUserState = onCall({ region: "us-central1" }, async (request) => {
 
   const remote = await loadRemoteSnapshot(uid);
   const merged = mergeSnapshots(incoming, remote);
-  const serverNow = admin.firestore.Timestamp.now();
+  const serverNow = Timestamp.now();
 
   await saveRemoteSnapshot(uid, merged, serverNow);
 
@@ -56,6 +60,84 @@ exports.syncUserState = onCall({ region: "us-central1" }, async (request) => {
     tombstones: timestampMapToIsoMap(merged.tombstones),
   };
 });
+
+exports.deleteAccount = onCall(
+  { region: "us-central1", timeoutSeconds: 3600 },
+  createDeleteAccountHandler({ db, auth: getAuth(), logger: console }),
+);
+
+function createDeleteAccountHandler({ db, auth, logger, now = Date.now, enabled = false }) {
+  return async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Authentication is required.");
+    }
+
+    // The deletion implementation is not safe to expose until all privileged
+    // and direct client writes are fenced and interrupted work is recoverable.
+    // Tests may exercise the unfinished implementation with explicit opt-in.
+    if (!enabled) {
+      throw new HttpsError("unavailable", "Account deletion is not available yet.");
+    }
+
+    // Firebase verifies request.auth.token. auth_time is the original sign-in
+    // time, unlike iat, which can be renewed by refreshing an old session.
+    const authTime = request.auth.token?.auth_time;
+    const nowMs = now();
+    const authTimeMs = Number.isSafeInteger(authTime) ? authTime * 1000 : NaN;
+    if (
+      !Number.isSafeInteger(authTime) || authTime <= 0 ||
+      !Number.isFinite(nowMs) || authTimeMs > nowMs ||
+      nowMs - authTimeMs > DELETE_ACCOUNT_MAX_AUTH_AGE_MS
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Recent authentication is required. Please reauthenticate and try again.",
+      );
+    }
+
+    try {
+      await deleteAccountData(request.auth.uid, db, auth);
+      return { deleted: true };
+    } catch (error) {
+      logger.error("Account deletion failed.", error);
+      // onCall only sends explicit HttpsErrors to the client; avoid exposing
+      // backend details while making a partial deletion distinguishable from success.
+      throw new HttpsError("internal", "Account deletion failed. Please retry.");
+    }
+  };
+}
+
+async function deleteAccountData(uid, db, auth) {
+  const userRef = db.collection("users").doc(uid);
+  const bookmarks = userRef.collection("bookmarks");
+
+  // Re-query the first page after each commit, rather than advancing a cursor
+  // past documents that might have been inserted before it.
+  while (true) {
+    const snapshot = await bookmarks.limit(DELETE_BOOKMARK_BATCH_SIZE).get();
+    if (snapshot.empty) {
+      break;
+    }
+
+    const batch = db.batch();
+    for (const doc of snapshot.docs) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+  }
+
+  // Keep authentication until all Firestore work has completed so a failed
+  // attempt can be retried by the same user.
+  await userRef.delete();
+  try {
+    await auth.deleteUser(uid);
+  } catch (error) {
+    // A previous attempt may have deleted the account but lost its response.
+    if (error.code !== "auth/user-not-found") {
+      throw error;
+    }
+  }
+}
 
 function parseSnapshot(rawSnapshot) {
   const snapshot = toObject(rawSnapshot);
@@ -498,7 +580,7 @@ async function saveRemoteSnapshot(uid, snapshot, serverNow) {
         verse: bookmark.verse,
         note: bookmark.note,
         createdAt: dateToIso(bookmark.createdAt),
-        updatedAt: admin.firestore.Timestamp.fromDate(bookmark.updatedAt),
+        updatedAt: Timestamp.fromDate(bookmark.updatedAt),
         deletedAt: null,
       },
       { merge: true },
@@ -512,8 +594,8 @@ async function saveRemoteSnapshot(uid, snapshot, serverNow) {
       bookmarkRef,
       {
         ...(decomposed || {}),
-        updatedAt: admin.firestore.Timestamp.fromDate(deletedAt),
-        deletedAt: admin.firestore.Timestamp.fromDate(deletedAt),
+        updatedAt: Timestamp.fromDate(deletedAt),
+        deletedAt: Timestamp.fromDate(deletedAt),
       },
       { merge: true },
     );
@@ -601,7 +683,7 @@ function toStringList(value) {
 }
 
 function toDate(value) {
-  if (value instanceof admin.firestore.Timestamp) {
+  if (value instanceof Timestamp) {
     return value.toDate();
   }
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -694,6 +776,8 @@ function hasOnlyAllowedKeys(value, allowedKeys) {
 }
 
 exports._internals = {
+  DELETE_BOOKMARK_BATCH_SIZE,
+  createDeleteAccountHandler,
   MAX_NOTE_LENGTH,
   MAX_BOOKMARKS_PER_SYNC,
   MAX_TOMBSTONES_PER_SYNC,
